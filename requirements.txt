@@ -1,0 +1,4 @@
+argostranslate
+speechrecognition
+pyttsx3
+pyaudio
