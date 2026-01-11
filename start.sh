@@ -10,4 +10,4 @@ source .venv/bin/activate
 sleep 10
 
 # Run the Python program
-python3 translatorfull.py
+python3 vocab_wo_stt.py
