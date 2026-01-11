@@ -4,3 +4,5 @@ pyttsx3
 pyaudio
 gTTS
 playsound==1.2.2
+nltk
+wordfreq
