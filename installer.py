@@ -33,3 +33,35 @@ install_dir = os.path.expanduser("~/.local/share/argos-translate/packages")
 print(f"\n✅ {package_to_install.from_name} → {package_to_install.to_name} model installed successfully!")
 print(f"📁 Installed to: {install_dir}")
 
+# ==================================================
+# STEP 7: Download Vosk Speech Recognition Model
+# ==================================================
+
+import urllib.request
+import zipfile
+
+print("\n🔊 Checking Vosk speech recognition model...")
+
+VOSK_MODEL_NAME = "vosk-model-small-en-us-0.15"
+VOSK_MODEL_ZIP = VOSK_MODEL_NAME + ".zip"
+VOSK_MODEL_URL = f"https://alphacephei.com/vosk/models/{VOSK_MODEL_ZIP}"
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+VOSK_MODEL_DIR = os.path.join(BASE_DIR, VOSK_MODEL_NAME)
+
+if os.path.isdir(VOSK_MODEL_DIR):
+    print("✅ Vosk model already installed")
+else:
+    print("⬇ Downloading Vosk model...")
+    zip_path = os.path.join(BASE_DIR, VOSK_MODEL_ZIP)
+
+    urllib.request.urlretrieve(VOSK_MODEL_URL, zip_path)
+
+    print("📦 Extracting Vosk model...")
+    with zipfile.ZipFile(zip_path, "r") as zip_ref:
+        zip_ref.extractall(BASE_DIR)
+
+    os.remove(zip_path)
+    print("✅ Vosk model installed successfully")
+
+
