@@ -1,7 +1,6 @@
-# translator_full.py
-# Requirements:
-# pip install vosk pyttsx3 argostranslate gTTS playsound==1.2.2
-# eSpeak NG installed (default path used below). Argos en->hi model must be installed.
+# translator_full_portable_fixed.py
+# SAME LOGIC as your translator_full.py
+# Only fixes: audio input error + hardcoded paths
 
 import os
 import json
@@ -22,11 +21,27 @@ try:
 except Exception:
     HAS_GTTS = False
 
-# ---------------- CONFIG ----------------
-VOSK_MODEL_PATH = r"D:/VIT Vellore/Project/Project 1/Offline Code Trial 2/vosk-model-small-en-us-0.15"
-ESPEAK_PATH = r"C:\Program Files\eSpeak NG\espeak-ng.exe"
-PREFERRED_INDEX = 24
-FALLBACK_INDEX = 1
+# ---------------- CONFIG (PORTABLE) ----------------
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# 🔹 Auto-detect Vosk model folder
+def find_vosk_model():
+    for name in os.listdir(BASE_DIR):
+        if name.lower().startswith("vosk-model"):
+            path = os.path.join(BASE_DIR, name)
+            if os.path.isdir(path):
+                return path
+    return None
+
+VOSK_MODEL_PATH = find_vosk_model()
+if not VOSK_MODEL_PATH:
+    raise FileNotFoundError(
+        "Vosk model not found.\n"
+        "➡ Put vosk-model-* folder in the SAME directory as this script"
+    )
+
+# 🔹 eSpeak optional (won’t crash if missing)
+ESPEAK_PATH = "espeak-ng"   # relies on PATH if installed
 
 CHANNELS = 1
 FORMAT = pyaudio.paInt16
@@ -36,9 +51,6 @@ VAD_RMS_THRESHOLD = 600
 VAD_FRAMES_TO_START = 2
 
 # ---------------- INIT ----------------
-if not os.path.exists(VOSK_MODEL_PATH):
-    raise FileNotFoundError(f"Vosk model not found at: {VOSK_MODEL_PATH}")
-
 model = Model(VOSK_MODEL_PATH)
 p = pyaudio.PyAudio()
 rec = None
@@ -48,57 +60,16 @@ stream = None
 langs = argotranslate.get_installed_languages()
 en_lang = next((l for l in langs if l.code == "en"), None)
 hi_lang = next((l for l in langs if l.code == "hi"), None)
+
 if not (en_lang and hi_lang):
     raise SystemExit("Argos en/hi model not installed.")
+
 translation_obj = en_lang.get_translation(hi_lang)
 
-# ---------------- AUDIO STREAM (FIXED ONLY HERE) ----------------
+# ---------------- AUDIO STREAM (AUTO DEVICE) ----------------
 def open_stream():
     global stream, rec
 
-    # 1️⃣ Preferred device (unchanged logic)
-    try:
-        pref_info = p.get_device_info_by_index(PREFERRED_INDEX)
-        pref_rate = int(pref_info.get('defaultSampleRate', 16000))
-        pref_rate = 16000 if pref_rate == 16000 else pref_rate
-
-        stream = p.open(
-            rate=pref_rate,
-            channels=CHANNELS,
-            format=FORMAT,
-            input=True,
-            frames_per_buffer=FRAMES_PER_BUFFER,
-            input_device_index=PREFERRED_INDEX
-        )
-        rec = KaldiRecognizer(model, pref_rate)
-        print("🎧 Using preferred device:", pref_info["name"])
-        print("Audio stream opened with rate:", pref_rate)
-        return rec, stream
-    except Exception as e:
-        print("⚠ Preferred device failed:", e)
-
-    # 2️⃣ Fallback device (unchanged logic)
-    try:
-        def_info = p.get_device_info_by_index(FALLBACK_INDEX)
-        def_rate = int(def_info.get('defaultSampleRate', 44100))
-
-        stream = p.open(
-            rate=def_rate,
-            channels=CHANNELS,
-            format=FORMAT,
-            input=True,
-            frames_per_buffer=FRAMES_PER_BUFFER,
-            input_device_index=FALLBACK_INDEX
-        )
-        rec = KaldiRecognizer(model, def_rate)
-        print("🎧 Using fallback device:", def_info["name"])
-        print("Audio stream opened with rate:", def_rate)
-        return rec, stream
-    except Exception as e:
-        print("⚠ Fallback device failed:", e)
-
-    # 3️⃣ AUTO scan (added – FIX)
-    print("🔍 Scanning for working microphone...")
     for i in range(p.get_device_count()):
         try:
             info = p.get_device_info_by_index(i)
@@ -117,10 +88,11 @@ def open_stream():
                 frames_per_buffer=FRAMES_PER_BUFFER,
                 input_device_index=i
             )
+
             rec = KaldiRecognizer(model, rate)
-            print(f"🎧 Auto-selected device [{i}]: {info['name']}")
-            print("Audio stream opened with rate:", rate)
+            print(f"🎧 Using mic [{i}] {info['name']} @ {rate} Hz")
             return rec, stream
+
         except Exception:
             continue
 
@@ -135,7 +107,9 @@ def tts_pyttsx3_hi(text):
         engine = pyttsx3.init()
         voices = engine.getProperty("voices")
         for v in voices:
-            if "hi" in str(v.languages).lower() or "hindi" in v.name.lower():
+            repr_v = (getattr(v, "id", "") + " " + getattr(v, "name", "") + " " +
+                      str(getattr(v, "languages", ""))).lower()
+            if "hi" in repr_v or "hindi" in repr_v or "hi-in" in repr_v:
                 engine.setProperty("voice", v.id)
                 engine.say(text)
                 engine.runAndWait()
@@ -145,8 +119,6 @@ def tts_pyttsx3_hi(text):
     return False
 
 def tts_espeak_ng(text):
-    if not os.path.isfile(ESPEAK_PATH):
-        return False
     try:
         subprocess.run([ESPEAK_PATH, "-v", "hi", text], check=False)
         return True
@@ -156,7 +128,7 @@ def tts_espeak_ng(text):
 def tts_gtts_fallback(text):
     if not HAS_GTTS:
         return False
-    tmp = tempfile.mktemp(".mp3")
+    tmp = tempfile.mktemp(suffix=".mp3")
     try:
         gTTS(text=text, lang='hi').save(tmp)
         playsound(tmp)
@@ -202,7 +174,7 @@ def recognize_speech():
                 return ""
             continue
 
-        rms = audioop.rms(data, 2) if data else 0
+        rms = audioop.rms(data, 2)
 
         if rms >= VAD_RMS_THRESHOLD:
             voiced_frames += 1
@@ -211,8 +183,11 @@ def recognize_speech():
                 in_speech = True
                 rec.Reset()
         else:
+            if in_speech:
+                silent_frames += 1
+            else:
+                silent_frames = 0
             voiced_frames = 0
-            silent_frames += 1 if in_speech else 0
 
         if rec.AcceptWaveform(data):
             res = json.loads(rec.Result())
