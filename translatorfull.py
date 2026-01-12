@@ -1,10 +1,7 @@
-# translator_portable.py
-# Fully portable Offline English → Hindi Speech Translator
-#
+# translator_full.py
 # Requirements:
-# pip install vosk pyaudio pyttsx3 argostranslate gTTS playsound==1.2.2
-# Argos translate-en_hi.argosmodel installed
-# (Optional) eSpeak NG installed
+# pip install vosk pyttsx3 argostranslate gTTS playsound==1.2.2
+# eSpeak NG installed (default path used below). Argos en->hi model must be installed.
 
 import os
 import json
@@ -25,28 +22,9 @@ try:
 except Exception:
     HAS_GTTS = False
 
-# ---------------- PORTABLE SETUP ----------------
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-def find_vosk_model():
-    for name in os.listdir(BASE_DIR):
-        if name.lower().startswith("vosk-model") and os.path.isdir(os.path.join(BASE_DIR, name)):
-            return os.path.join(BASE_DIR, name)
-    return None
-
-VOSK_MODEL_PATH = find_vosk_model()
-
-if not VOSK_MODEL_PATH:
-    raise SystemExit(
-        "\n❌ No Vosk model found.\n"
-        "➡ Download an English Vosk model\n"
-        "➡ Extract it into the SAME folder as this script\n"
-        "➡ Folder name must start with 'vosk-model'\n"
-    )
-
-print("✅ Using Vosk model:", os.path.basename(VOSK_MODEL_PATH))
-
-# ---------------- AUDIO CONFIG ----------------
+# ---------------- CONFIG ----------------
+VOSK_MODEL_PATH = r"D:/VIT Vellore/Project/Project 1/Offline Code Trial 2/vosk-model-small-en-us-0.15"
+ESPEAK_PATH = r"C:\Program Files\eSpeak NG\espeak-ng.exe"
 PREFERRED_INDEX = 24
 FALLBACK_INDEX = 1
 
@@ -58,121 +36,215 @@ VAD_RMS_THRESHOLD = 600
 VAD_FRAMES_TO_START = 2
 
 # ---------------- INIT ----------------
+if not os.path.exists(VOSK_MODEL_PATH):
+    raise FileNotFoundError(f"Vosk model not found at: {VOSK_MODEL_PATH}")
+
 model = Model(VOSK_MODEL_PATH)
 p = pyaudio.PyAudio()
+rec = None
+stream = None
 
 # ---------------- ARGOS TRANSLATE ----------------
 langs = argotranslate.get_installed_languages()
 en_lang = next((l for l in langs if l.code == "en"), None)
 hi_lang = next((l for l in langs if l.code == "hi"), None)
-
 if not (en_lang and hi_lang):
-    raise SystemExit("❌ Argos en→hi model not installed")
-
+    raise SystemExit("Argos en/hi model not installed.")
 translation_obj = en_lang.get_translation(hi_lang)
 
-# ---------------- AUDIO STREAM ----------------
+# ---------------- AUDIO STREAM (FIXED ONLY HERE) ----------------
 def open_stream():
-    try:
-        info = p.get_device_info_by_index(PREFERRED_INDEX)
-        rate = int(info.get("defaultSampleRate", 16000))
-        rate = 16000 if rate != 16000 else rate
-        stream = p.open(rate=rate, channels=CHANNELS, format=FORMAT,
-                        input=True, frames_per_buffer=FRAMES_PER_BUFFER,
-                        input_device_index=PREFERRED_INDEX)
-    except Exception:
-        info = p.get_device_info_by_index(FALLBACK_INDEX)
-        rate = int(info.get("defaultSampleRate", 44100))
-        stream = p.open(rate=rate, channels=CHANNELS, format=FORMAT,
-                        input=True, frames_per_buffer=FRAMES_PER_BUFFER,
-                        input_device_index=FALLBACK_INDEX)
+    global stream, rec
 
-    print("🎧 Audio stream opened at", rate, "Hz")
-    return KaldiRecognizer(model, rate), stream
+    # 1️⃣ Preferred device (unchanged logic)
+    try:
+        pref_info = p.get_device_info_by_index(PREFERRED_INDEX)
+        pref_rate = int(pref_info.get('defaultSampleRate', 16000))
+        pref_rate = 16000 if pref_rate == 16000 else pref_rate
+
+        stream = p.open(
+            rate=pref_rate,
+            channels=CHANNELS,
+            format=FORMAT,
+            input=True,
+            frames_per_buffer=FRAMES_PER_BUFFER,
+            input_device_index=PREFERRED_INDEX
+        )
+        rec = KaldiRecognizer(model, pref_rate)
+        print("🎧 Using preferred device:", pref_info["name"])
+        print("Audio stream opened with rate:", pref_rate)
+        return rec, stream
+    except Exception as e:
+        print("⚠ Preferred device failed:", e)
+
+    # 2️⃣ Fallback device (unchanged logic)
+    try:
+        def_info = p.get_device_info_by_index(FALLBACK_INDEX)
+        def_rate = int(def_info.get('defaultSampleRate', 44100))
+
+        stream = p.open(
+            rate=def_rate,
+            channels=CHANNELS,
+            format=FORMAT,
+            input=True,
+            frames_per_buffer=FRAMES_PER_BUFFER,
+            input_device_index=FALLBACK_INDEX
+        )
+        rec = KaldiRecognizer(model, def_rate)
+        print("🎧 Using fallback device:", def_info["name"])
+        print("Audio stream opened with rate:", def_rate)
+        return rec, stream
+    except Exception as e:
+        print("⚠ Fallback device failed:", e)
+
+    # 3️⃣ AUTO scan (added – FIX)
+    print("🔍 Scanning for working microphone...")
+    for i in range(p.get_device_count()):
+        try:
+            info = p.get_device_info_by_index(i)
+            if info.get("maxInputChannels", 0) < 1:
+                continue
+
+            rate = int(info.get("defaultSampleRate", 16000))
+            if rate not in (8000, 16000, 44100, 48000):
+                rate = 16000
+
+            stream = p.open(
+                rate=rate,
+                channels=CHANNELS,
+                format=FORMAT,
+                input=True,
+                frames_per_buffer=FRAMES_PER_BUFFER,
+                input_device_index=i
+            )
+            rec = KaldiRecognizer(model, rate)
+            print(f"🎧 Auto-selected device [{i}]: {info['name']}")
+            print("Audio stream opened with rate:", rate)
+            return rec, stream
+        except Exception:
+            continue
+
+    raise SystemExit("❌ No working audio input device found")
 
 rec, stream = open_stream()
 
-# ---------------- TTS ----------------
-def speak_text_hi(text):
-    if not text:
-        return
-
-    # Try pyttsx3
+# ---------------- TTS helpers (UNCHANGED) ----------------
+def tts_pyttsx3_hi(text):
     try:
         import pyttsx3
         engine = pyttsx3.init()
-        engine.say(text)
-        engine.runAndWait()
-        return
+        voices = engine.getProperty("voices")
+        for v in voices:
+            if "hi" in str(v.languages).lower() or "hindi" in v.name.lower():
+                engine.setProperty("voice", v.id)
+                engine.say(text)
+                engine.runAndWait()
+                return True
     except Exception:
         pass
+    return False
 
-    # Try eSpeak (if available in PATH)
+def tts_espeak_ng(text):
+    if not os.path.isfile(ESPEAK_PATH):
+        return False
     try:
-        subprocess.run(["espeak-ng", "-v", "hi", text], check=False)
-        return
+        subprocess.run([ESPEAK_PATH, "-v", "hi", text], check=False)
+        return True
     except Exception:
-        pass
+        return False
 
-    # gTTS fallback
-    if HAS_GTTS:
-        tmp = tempfile.mktemp(".mp3")
+def tts_gtts_fallback(text):
+    if not HAS_GTTS:
+        return False
+    tmp = tempfile.mktemp(".mp3")
+    try:
+        gTTS(text=text, lang='hi').save(tmp)
+        playsound(tmp)
+        return True
+    except Exception:
+        return False
+    finally:
         try:
-            gTTS(text=text, lang="hi").save(tmp)
-            playsound(tmp)
-        finally:
-            if os.path.exists(tmp):
-                os.remove(tmp)
+            os.remove(tmp)
+        except Exception:
+            pass
 
-# ---------------- SPEECH RECOGNITION ----------------
+def speak_text_hi(text):
+    if not text:
+        return
+    if tts_pyttsx3_hi(text):
+        return
+    if tts_espeak_ng(text):
+        return
+    if tts_gtts_fallback(text):
+        return
+    print("[TTS] No TTS available:", text)
+
+# ---------------- VAD + Recognizer (UNCHANGED) ----------------
 def recognize_speech():
     rec.Reset()
-    silent = voiced = 0
+    print("🎙 Listening...")
+    silent_frames = 0
+    voiced_frames = 0
     in_speech = False
 
-    print("🎙 Listening...")
-
     while True:
-        data = stream.read(FRAMES_PER_BUFFER, exception_on_overflow=False)
-        rms = audioop.rms(data, 2)
+        try:
+            data = stream.read(FRAMES_PER_BUFFER, exception_on_overflow=False)
+        except Exception:
+            time.sleep(0.05)
+            continue
+
+        if not data:
+            silent_frames += 1
+            if silent_frames > SILENCE_FRAME_LIMIT:
+                rec.Reset()
+                return ""
+            continue
+
+        rms = audioop.rms(data, 2) if data else 0
 
         if rms >= VAD_RMS_THRESHOLD:
-            voiced += 1
-            silent = 0
-            if voiced >= VAD_FRAMES_TO_START:
+            voiced_frames += 1
+            silent_frames = 0
+            if not in_speech and voiced_frames >= VAD_FRAMES_TO_START:
                 in_speech = True
+                rec.Reset()
         else:
-            silent += 1
-            voiced = 0
+            voiced_frames = 0
+            silent_frames += 1 if in_speech else 0
 
         if rec.AcceptWaveform(data):
-            result = json.loads(rec.Result())
-            return result.get("text", "").strip()
+            res = json.loads(rec.Result())
+            text = res.get("text", "").strip()
+            if text:
+                return text
 
-        if in_speech and silent > SILENCE_FRAME_LIMIT:
+        if in_speech and silent_frames > SILENCE_FRAME_LIMIT:
+            rec.Reset()
             return ""
 
-# ---------------- MAIN LOOP ----------------
-if __name__ == "__main__":
-    print("\n✅ Ready — Speak English (Ctrl+C to exit)\n")
+        time.sleep(0.005)
 
+# ---------------- MAIN LOOP (UNCHANGED) ----------------
+if __name__ == "__main__":
+    print("Ready. Press Ctrl+C to quit.")
     try:
         while True:
             spoken = recognize_speech()
-
             if spoken:
-                print("🗣 You said:", spoken)
-
-                translated = translation_obj.translate(spoken)
-                print("🇮🇳 Hindi:", translated)
-
-                speak_text_hi(translated)
-
-            time.sleep(0.2)
-
+                print("You said:", spoken)
+                translated_hi = translation_obj.translate(spoken)
+                print("Translated (hi):", translated_hi)
+                speak_text_hi(translated_hi)
+            else:
+                time.sleep(0.2)
     except KeyboardInterrupt:
-        print("\n👋 Exiting...")
+        print("Exiting...")
     finally:
-        stream.stop_stream()
-        stream.close()
+        try:
+            stream.stop_stream()
+            stream.close()
+        except Exception:
+            pass
         p.terminate()
