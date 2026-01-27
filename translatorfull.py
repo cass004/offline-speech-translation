@@ -1,19 +1,17 @@
-# translator_full_portable_fixed.py
-# SAME LOGIC as your translator_full.py
-# Only fixes: audio input error + hardcoded paths
+# Hindi Speech → English (audio) → Simplified English (audio)
+# FINAL SEMANTIC-SAFE VERSION
 
 import os
 import json
-import time
 import subprocess
 import audioop
 import tempfile
 
 import pyaudio
 from vosk import Model, KaldiRecognizer
-from argostranslate import translate as argotranslate
+from argostranslate import translate as argostranslate
 
-# Optional gTTS fallback
+# ---------------- OPTIONAL TTS ----------------
 try:
     from gtts import gTTS
     from playsound import playsound
@@ -21,10 +19,114 @@ try:
 except Exception:
     HAS_GTTS = False
 
-# ---------------- CONFIG (PORTABLE) ----------------
+# ================= NLP SIMPLIFIER =================
+import nltk
+from nltk.corpus import wordnet as wn
+from nltk import pos_tag
+from wordfreq import zipf_frequency
+from difflib import get_close_matches
+
+nltk.download("wordnet", quiet=True)
+nltk.download("averaged_perceptron_tagger_eng", quiet=True)
+
+# ---- FUNCTION WORDS (NEVER MODIFY) ----
+AUX_VERBS = {
+    "am", "is", "are", "was", "were",
+    "be", "been", "being",
+    "do", "does", "did",
+    "have", "has", "had",
+    "will", "would", "shall", "should",
+    "may", "might", "must", "can", "could"
+}
+
+STOP_WORDS = {
+    "the", "a", "an",
+    "in", "on", "at", "of", "to", "for", "from",
+    "and", "or", "but", "if", "then",
+    "this", "that", "these", "those"
+}
+
+# ---- MANUAL SAFE SIMPLIFICATIONS ----
+SIMPLE_MAP = {
+    "lethargic": "lazy",
+    "fatigued": "tired",
+    "commence": "start",
+    "terminate": "end",
+    "utilize": "use",
+    "assist": "help",
+    "assistance": "help",
+    "purchase": "buy",
+    "reside": "live",
+}
+
+def get_wordnet_pos(tag):
+    if tag.startswith("J"):
+        return wn.ADJ
+    if tag.startswith("V"):
+        return wn.VERB
+    if tag.startswith("R"):
+        return wn.ADV
+    return None
+
+# ✅ AUTOCORRECT ONLY UNKNOWN WORDS
+def autocorrect(word):
+    if wn.synsets(word):
+        return word
+    matches = get_close_matches(word, wn.words(), n=1, cutoff=0.85)
+    return matches[0] if matches else word
+
+def get_simpler_word(word, pos=None):
+    if word in SIMPLE_MAP:
+        return SIMPLE_MAP[word]
+
+    if not pos:
+        return word
+
+    synsets = wn.synsets(word, pos=pos)
+    if not synsets:
+        return word
+
+    candidates = set()
+    for syn in synsets:
+        for lemma in syn.lemmas():
+            candidates.add(lemma.name().replace("_", " "))
+
+    if not candidates:
+        return word
+
+    best = max(candidates, key=lambda w: zipf_frequency(w, "en"))
+    return best if zipf_frequency(best, "en") > zipf_frequency(word, "en") else word
+
+# ✅ FINAL SAFE SIMPLIFIER
+def simplify_text(text):
+    tokens = text.split()
+    tagged = pos_tag(tokens)
+    output = []
+
+    for token, tag in tagged:
+        clean = token.strip(".,?!").lower()
+
+        # 🚫 NEVER TOUCH FUNCTION WORDS
+        if clean in AUX_VERBS or clean in STOP_WORDS:
+            output.append(token)
+            continue
+
+        # 🚫 NEVER SIMPLIFY NOUNS (critical rule)
+        if tag.startswith("N"):
+            output.append(token)
+            continue
+
+        corrected = autocorrect(clean)
+        wn_pos = get_wordnet_pos(tag)
+        simple = get_simpler_word(corrected, wn_pos)
+
+        output.append(token.replace(clean, simple) if simple != clean else token)
+
+    return " ".join(output)
+
+# ================= AUDIO CONFIG =================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# 🔹 Auto-detect Vosk model folder
 def find_vosk_model():
     for name in os.listdir(BASE_DIR):
         if name.lower().startswith("vosk-model"):
@@ -35,191 +137,132 @@ def find_vosk_model():
 
 VOSK_MODEL_PATH = find_vosk_model()
 if not VOSK_MODEL_PATH:
-    raise FileNotFoundError(
-        "Vosk model not found.\n"
-        "➡ Put vosk-model-* folder in the SAME directory as this script"
-    )
+    raise FileNotFoundError("Put vosk-model-small-hi-* beside this script")
 
-# 🔹 eSpeak optional (won’t crash if missing)
-ESPEAK_PATH = "espeak-ng"   # relies on PATH if installed
+ESPEAK_PATH = "espeak-ng"
 
-CHANNELS = 1
 FORMAT = pyaudio.paInt16
 FRAMES_PER_BUFFER = 2048
 SILENCE_FRAME_LIMIT = 60
 VAD_RMS_THRESHOLD = 600
 VAD_FRAMES_TO_START = 2
 
-# ---------------- INIT ----------------
 model = Model(VOSK_MODEL_PATH)
 p = pyaudio.PyAudio()
-rec = None
-stream = None
 
-# ---------------- ARGOS TRANSLATE ----------------
-langs = argotranslate.get_installed_languages()
-en_lang = next((l for l in langs if l.code == "en"), None)
-hi_lang = next((l for l in langs if l.code == "hi"), None)
+# ================= ARGOS (HI → EN) =================
+langs = argostranslate.get_installed_languages()
+hi = next(l for l in langs if l.code == "hi")
+en = next(l for l in langs if l.code == "en")
+translator = hi.get_translation(en)
 
-if not (en_lang and hi_lang):
-    raise SystemExit("Argos en/hi model not installed.")
-
-translation_obj = en_lang.get_translation(hi_lang)
-
-# ---------------- AUDIO STREAM (AUTO DEVICE) ----------------
+# ================= AUDIO STREAM =================
 def open_stream():
-    global stream, rec
-
     for i in range(p.get_device_count()):
         try:
             info = p.get_device_info_by_index(i)
-            if info.get("maxInputChannels", 0) < 1:
+            if info["maxInputChannels"] < 1:
                 continue
-
-            rate = int(info.get("defaultSampleRate", 16000))
-            if rate not in (8000, 16000, 44100, 48000):
-                rate = 16000
-
+            rate = int(info["defaultSampleRate"])
             stream = p.open(
                 rate=rate,
-                channels=CHANNELS,
+                channels=1,
                 format=FORMAT,
                 input=True,
                 frames_per_buffer=FRAMES_PER_BUFFER,
                 input_device_index=i
             )
-
-            rec = KaldiRecognizer(model, rate)
             print(f"🎧 Using mic [{i}] {info['name']} @ {rate} Hz")
-            return rec, stream
-
+            return KaldiRecognizer(model, rate), stream
         except Exception:
             continue
-
-    raise SystemExit("❌ No working audio input device found")
+    raise SystemExit("No working microphone found")
 
 rec, stream = open_stream()
 
-# ---------------- TTS helpers (UNCHANGED) ----------------
-def tts_pyttsx3_hi(text):
+# ================= TTS =================
+def speak_text_en(text):
+    if not text.strip():
+        return
+
     try:
         import pyttsx3
         engine = pyttsx3.init()
-        voices = engine.getProperty("voices")
-        for v in voices:
-            repr_v = (getattr(v, "id", "") + " " + getattr(v, "name", "") + " " +
-                      str(getattr(v, "languages", ""))).lower()
-            if "hi" in repr_v or "hindi" in repr_v or "hi-in" in repr_v:
-                engine.setProperty("voice", v.id)
-                engine.say(text)
-                engine.runAndWait()
-                return True
+        engine.say(text)
+        engine.runAndWait()
+        return
     except Exception:
         pass
-    return False
 
-def tts_espeak_ng(text):
     try:
-        subprocess.run([ESPEAK_PATH, "-v", "hi", text], check=False)
-        return True
+        subprocess.run(
+            [ESPEAK_PATH, "-v", "en", text],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+        return
     except Exception:
-        return False
+        pass
 
-def tts_gtts_fallback(text):
-    if not HAS_GTTS:
-        return False
-    tmp = tempfile.mktemp(suffix=".mp3")
-    try:
-        gTTS(text=text, lang='hi').save(tmp)
-        playsound(tmp)
-        return True
-    except Exception:
-        return False
-    finally:
+    if HAS_GTTS:
         try:
+            tmp = tempfile.mktemp(".mp3")
+            gTTS(text=text, lang="en").save(tmp)
+            playsound(tmp)
             os.remove(tmp)
         except Exception:
             pass
 
-def speak_text_hi(text):
-    if not text:
-        return
-    if tts_pyttsx3_hi(text):
-        return
-    if tts_espeak_ng(text):
-        return
-    if tts_gtts_fallback(text):
-        return
-    print("[TTS] No TTS available:", text)
-
-# ---------------- VAD + Recognizer (UNCHANGED) ----------------
+# ================= SPEECH RECOGNITION =================
 def recognize_speech():
     rec.Reset()
-    print("🎙 Listening...")
-    silent_frames = 0
-    voiced_frames = 0
+    silent = voiced = 0
     in_speech = False
 
     while True:
-        try:
-            data = stream.read(FRAMES_PER_BUFFER, exception_on_overflow=False)
-        except Exception:
-            time.sleep(0.05)
-            continue
-
-        if not data:
-            silent_frames += 1
-            if silent_frames > SILENCE_FRAME_LIMIT:
-                rec.Reset()
-                return ""
-            continue
-
+        data = stream.read(FRAMES_PER_BUFFER, exception_on_overflow=False)
         rms = audioop.rms(data, 2)
 
         if rms >= VAD_RMS_THRESHOLD:
-            voiced_frames += 1
-            silent_frames = 0
-            if not in_speech and voiced_frames >= VAD_FRAMES_TO_START:
+            voiced += 1
+            silent = 0
+            if not in_speech and voiced >= VAD_FRAMES_TO_START:
                 in_speech = True
                 rec.Reset()
         else:
-            if in_speech:
-                silent_frames += 1
-            else:
-                silent_frames = 0
-            voiced_frames = 0
+            silent += 1
+            voiced = 0
 
         if rec.AcceptWaveform(data):
-            res = json.loads(rec.Result())
-            text = res.get("text", "").strip()
+            text = json.loads(rec.Result()).get("text", "")
             if text:
                 return text
 
-        if in_speech and silent_frames > SILENCE_FRAME_LIMIT:
-            rec.Reset()
+        if in_speech and silent > SILENCE_FRAME_LIMIT:
             return ""
 
-        time.sleep(0.005)
+# ================= MAIN =================
+print("\n🎤 Speak Hindi (Ctrl+C to exit)\n")
 
-# ---------------- MAIN LOOP (UNCHANGED) ----------------
-if __name__ == "__main__":
-    print("Ready. Press Ctrl+C to quit.")
-    try:
-        while True:
-            spoken = recognize_speech()
-            if spoken:
-                print("You said:", spoken)
-                translated_hi = translation_obj.translate(spoken)
-                print("Translated (hi):", translated_hi)
-                speak_text_hi(translated_hi)
-            else:
-                time.sleep(0.2)
-    except KeyboardInterrupt:
-        print("Exiting...")
-    finally:
-        try:
-            stream.stop_stream()
-            stream.close()
-        except Exception:
-            pass
-        p.terminate()
+try:
+    while True:
+        spoken_hi = recognize_speech()
+        if not spoken_hi:
+            continue
+
+        print("🗣 Hindi:", spoken_hi)
+
+        english = translator.translate(spoken_hi)
+        print("🇬🇧 English:", english)
+        speak_text_en(english)
+
+        if input("Simplify English sentence? (y/n): ").strip().lower() == "y":
+            simplified = simplify_text(english)
+            print("✨ Simplified English:", simplified)
+            speak_text_en(simplified)
+
+except KeyboardInterrupt:
+    print("\nExiting...")
+finally:
+    stream.close()
+    p.terminate()
