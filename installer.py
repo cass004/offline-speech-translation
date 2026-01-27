@@ -40,9 +40,9 @@ print(f"📁 Installed to: {install_dir}")
 import urllib.request
 import zipfile
 
-print("\n🔊 Checking Vosk speech recognition model...")
+print("\n🔊 Checking Vosk hindi speech recognition model...")
 
-VOSK_MODEL_NAME = "vosk-model-small-en-us-0.15"
+VOSK_MODEL_NAME = "vosk-model-small-hi-0.22"
 VOSK_MODEL_ZIP = VOSK_MODEL_NAME + ".zip"
 VOSK_MODEL_URL = f"https://alphacephei.com/vosk/models/{VOSK_MODEL_ZIP}"
 
@@ -50,18 +50,18 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 VOSK_MODEL_DIR = os.path.join(BASE_DIR, VOSK_MODEL_NAME)
 
 if os.path.isdir(VOSK_MODEL_DIR):
-    print("✅ Vosk model already installed")
+    print("✅ Vosk hindi model already installed")
 else:
-    print("⬇ Downloading Vosk model...")
+    print("⬇ Downloading Vosk hindi model...")
     zip_path = os.path.join(BASE_DIR, VOSK_MODEL_ZIP)
 
     urllib.request.urlretrieve(VOSK_MODEL_URL, zip_path)
 
-    print("📦 Extracting Vosk model...")
+    print("📦 Extracting Vosk hindi model...")
     with zipfile.ZipFile(zip_path, "r") as zip_ref:
         zip_ref.extractall(BASE_DIR)
 
     os.remove(zip_path)
-    print("✅ Vosk model installed successfully")
+    print("✅ Vosk hindi model installed successfully")
 
 
