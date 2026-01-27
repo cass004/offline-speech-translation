@@ -129,7 +129,8 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 def find_vosk_model():
     for name in os.listdir(BASE_DIR):
-        if name.lower().startswith("vosk-model"):
+        lname = name.lower()
+        if lname.startswith("vosk-model") and "-hi-" in lname:
             path = os.path.join(BASE_DIR, name)
             if os.path.isdir(path):
                 return path
@@ -137,7 +138,10 @@ def find_vosk_model():
 
 VOSK_MODEL_PATH = find_vosk_model()
 if not VOSK_MODEL_PATH:
-    raise FileNotFoundError("Put vosk-model-small-hi-* beside this script")
+    raise FileNotFoundError(
+        "Hindi Vosk model not found. Expected: vosk-model-small-hi-*"
+    )
+
 
 ESPEAK_PATH = "espeak-ng"
 
