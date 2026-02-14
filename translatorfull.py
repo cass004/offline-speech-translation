@@ -141,7 +141,7 @@ if platform.system() == "Windows":
     PIPER_MODEL = os.path.join(BASE_DIR, "piper_windows_amd64", "piper", "en_US-lessac-medium.onnx")
 else:
     # 🔥 OPTION 1 FIX: Use local ./piper (NO PATH dependency)
-    PIPER_BIN = os.path.join(BASE_DIR, "piper")
+    PIPER_BIN = os.path.join(BASE_DIR, "piper", "piper")
     PIPER_MODEL = os.path.join(BASE_DIR, "en_US-lessac-medium.onnx")
 
 # ================= VOSK =================
