@@ -1,5 +1,5 @@
 # Hindi Speech → English → Simplified English
-# FINAL STABLE VERSION (Bluetooth HFP Compatible)
+# FINAL VERSION (Bluetooth HFP Stable - Forced Sink)
 
 import os
 import json
@@ -122,6 +122,9 @@ else:
     PIPER_MODEL = os.path.join(BASE_DIR, "en_US-lessac-medium.onnx")
     PIPER_CONFIG = PIPER_MODEL + ".json"
 
+# 🔥 Forced Bluetooth sink (your device)
+BLUETOOTH_SINK = "bluez_sink.74_D7_13_FD_39_CD.handsfree_head_unit"
+
 # ================= VOSK =================
 
 def find_vosk_model():
@@ -196,17 +199,16 @@ def speak_text_en(text):
             )
 
             if os.path.exists(tmp_wav):
-               subprocess.run(
-    [
-        "paplay",
-        "--rate=16000",
-        "--device=bluez_sink.74_D7_13_FD_39_CD.handsfree_head_unit",
-        tmp_wav
-    ],
-    stdout=subprocess.DEVNULL,
-    stderr=subprocess.DEVNULL
-)
-
+                subprocess.run(
+                    [
+                        "paplay",
+                        "--rate=16000",
+                        "--device=" + BLUETOOTH_SINK,
+                        tmp_wav
+                    ],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
                 os.remove(tmp_wav)
 
     except Exception as e:
