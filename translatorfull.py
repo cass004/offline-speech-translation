@@ -1,5 +1,5 @@
 # Hindi Speech → English → Simplified English
-# FINAL UNIVERSAL VERSION (With Intelligent Correction Layer)
+# FINAL UNIVERSAL VERSION (With Intelligent Correction + Local Piper)
 
 import os
 import json
@@ -23,41 +23,40 @@ from difflib import get_close_matches
 nltk.download("wordnet", quiet=True)
 nltk.download("averaged_perceptron_tagger_eng", quiet=True)
 
+# ---------------- SIMPLIFIER RULES ----------------
+
 AUX_VERBS = {
-    "am", "is", "are", "was", "were",
-    "be", "been", "being",
-    "do", "does", "did",
-    "have", "has", "had",
-    "will", "would", "shall", "should",
-    "may", "might", "must", "can", "could"
+    "am","is","are","was","were",
+    "be","been","being",
+    "do","does","did",
+    "have","has","had",
+    "will","would","shall","should",
+    "may","might","must","can","could"
 }
 
 STOP_WORDS = {
-    "the", "a", "an",
-    "in", "on", "at", "of", "to", "for", "from",
-    "and", "or", "but", "if", "then",
-    "this", "that", "these", "those"
+    "the","a","an",
+    "in","on","at","of","to","for","from",
+    "and","or","but","if","then",
+    "this","that","these","those"
 }
 
 SIMPLE_MAP = {
-    "lethargic": "lazy",
-    "fatigued": "tired",
-    "commence": "start",
-    "terminate": "end",
-    "utilize": "use",
-    "assist": "help",
-    "assistance": "help",
-    "purchase": "buy",
-    "reside": "live",
+    "lethargic":"lazy",
+    "fatigued":"tired",
+    "commence":"start",
+    "terminate":"end",
+    "utilize":"use",
+    "assist":"help",
+    "assistance":"help",
+    "purchase":"buy",
+    "reside":"live",
 }
 
 def get_wordnet_pos(tag):
-    if tag.startswith("J"):
-        return wn.ADJ
-    if tag.startswith("V"):
-        return wn.VERB
-    if tag.startswith("R"):
-        return wn.ADV
+    if tag.startswith("J"): return wn.ADJ
+    if tag.startswith("V"): return wn.VERB
+    if tag.startswith("R"): return wn.ADV
     return None
 
 def autocorrect(word):
@@ -69,7 +68,6 @@ def autocorrect(word):
 def get_simpler_word(word, pos=None):
     if word in SIMPLE_MAP:
         return SIMPLE_MAP[word]
-
     if not pos:
         return word
 
@@ -112,43 +110,29 @@ def simplify_text(text):
 
     return " ".join(output)
 
-# ================= INTELLIGENT CORRECTION LAYER =================
+# ================= INTELLIGENT CORRECTION =================
 
 def intelligent_correction(hindi_text, english_text):
     eng = english_text.lower().strip()
 
-    # --- Greeting Fixes ---
     if "कैसे हो" in hindi_text or "कैसे हैं" in hindi_text:
-        return "How are you"
+        return "How are you?"
 
-    if "आप कैसे" in hindi_text:
-        return "How are you"
-
-    # --- Doing Question Fix ---
     if "क्या कर रहे" in hindi_text:
-        return "What are you doing"
+        return "What are you doing?"
 
     if eng.startswith("what are") and "doing" not in eng:
-        return "What are you doing"
+        return "What are you doing?"
 
-    # --- Missing 'you' after are ---
-    if eng.startswith("what are"):
-        return eng + " you"
-
-    if eng.startswith("how to get"):
-        return "How are you"
-
-    # --- Capitalize properly ---
     eng = eng.capitalize()
 
-    # --- Add question mark if interrogative ---
-    if any(word in eng.lower() for word in ["how", "what", "why", "when", "where"]):
+    if any(word in eng.lower() for word in ["how","what","why","when","where"]):
         if not eng.endswith("?"):
             eng += "?"
 
     return eng
 
-# ================= PATH CONFIG =================
+# ================= PATH CONFIG (OPTION 1 FIX) =================
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -156,18 +140,16 @@ if platform.system() == "Windows":
     PIPER_BIN = os.path.join(BASE_DIR, "piper_windows_amd64", "piper", "piper.exe")
     PIPER_MODEL = os.path.join(BASE_DIR, "piper_windows_amd64", "piper", "en_US-lessac-medium.onnx")
 else:
-    PIPER_BIN = "piper"
+    # 🔥 OPTION 1 FIX: Use local ./piper (NO PATH dependency)
+    PIPER_BIN = os.path.join(BASE_DIR, "piper")
     PIPER_MODEL = os.path.join(BASE_DIR, "en_US-lessac-medium.onnx")
 
 # ================= VOSK =================
 
 def find_vosk_model():
     for name in os.listdir(BASE_DIR):
-        lname = name.lower()
-        if lname.startswith("vosk-model") and "-hi-" in lname:
-            path = os.path.join(BASE_DIR, name)
-            if os.path.isdir(path):
-                return path
+        if name.lower().startswith("vosk-model") and "-hi-" in name.lower():
+            return os.path.join(BASE_DIR, name)
     return None
 
 VOSK_MODEL_PATH = find_vosk_model()
@@ -199,14 +181,9 @@ def open_stream():
             if info["maxInputChannels"] < 1:
                 continue
             rate = int(info["defaultSampleRate"])
-            stream = p.open(
-                rate=rate,
-                channels=1,
-                format=FORMAT,
-                input=True,
-                frames_per_buffer=FRAMES_PER_BUFFER,
-                input_device_index=i
-            )
+            stream = p.open(rate=rate, channels=1, format=FORMAT,
+                            input=True, frames_per_buffer=FRAMES_PER_BUFFER,
+                            input_device_index=i)
             print(f"🎧 Using mic [{i}] {info['name']} @ {rate} Hz")
             return KaldiRecognizer(model, rate), stream
         except Exception:
@@ -215,7 +192,7 @@ def open_stream():
 
 rec, stream = open_stream()
 
-# ================= UNIVERSAL PIPER TTS =================
+# ================= PIPER TTS =================
 
 def speak_text_en(text):
     if not text.strip():
