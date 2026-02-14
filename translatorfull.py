@@ -217,7 +217,7 @@ def speak_text_en(text):
                 import winsound
                 winsound.PlaySound(tmp_wav, winsound.SND_FILENAME)
             else:
-                subprocess.run(["aplay", tmp_wav],
+                subprocess.run(["paplay", tmp_wav],
                                stdout=subprocess.DEVNULL,
                                stderr=subprocess.DEVNULL)
             os.remove(tmp_wav)
