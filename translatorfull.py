@@ -217,9 +217,18 @@ def speak_text_en(text):
                 import winsound
                 winsound.PlaySound(tmp_wav, winsound.SND_FILENAME)
             else:
-                subprocess.run(["paplay", tmp_wav],
-                               stdout=subprocess.DEVNULL,
-                               stderr=subprocess.DEVNULL)
+                subprocess.run(
+    [
+        "paplay",
+        "--format=s16le",
+        "--rate=16000",
+        "--channels=1",
+        tmp_wav
+    ],
+    stdout=subprocess.DEVNULL,
+    stderr=subprocess.DEVNULL
+)
+
             os.remove(tmp_wav)
 
     except Exception as e:
