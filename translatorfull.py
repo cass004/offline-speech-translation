@@ -1,23 +1,17 @@
-# Hindi Speech → English (audio) → Simplified English (audio)
-# FINAL SEMANTIC-SAFE VERSION
+# Hindi Speech → English → Simplified English
+# FINAL UNIVERSAL VERSION (With Intelligent Correction Layer)
 
 import os
 import json
 import subprocess
 import audioop
 import tempfile
+import platform
+import re
 
 import pyaudio
 from vosk import Model, KaldiRecognizer
 from argostranslate import translate as argostranslate
-
-# ---------------- OPTIONAL TTS ----------------
-try:
-    from gtts import gTTS
-    from playsound import playsound
-    HAS_GTTS = True
-except Exception:
-    HAS_GTTS = False
 
 # ================= NLP SIMPLIFIER =================
 import nltk
@@ -29,7 +23,6 @@ from difflib import get_close_matches
 nltk.download("wordnet", quiet=True)
 nltk.download("averaged_perceptron_tagger_eng", quiet=True)
 
-# ---- FUNCTION WORDS (NEVER MODIFY) ----
 AUX_VERBS = {
     "am", "is", "are", "was", "were",
     "be", "been", "being",
@@ -46,7 +39,6 @@ STOP_WORDS = {
     "this", "that", "these", "those"
 }
 
-# ---- MANUAL SAFE SIMPLIFICATIONS ----
 SIMPLE_MAP = {
     "lethargic": "lazy",
     "fatigued": "tired",
@@ -68,7 +60,6 @@ def get_wordnet_pos(tag):
         return wn.ADV
     return None
 
-# ✅ AUTOCORRECT ONLY UNKNOWN WORDS
 def autocorrect(word):
     if wn.synsets(word):
         return word
@@ -97,7 +88,6 @@ def get_simpler_word(word, pos=None):
     best = max(candidates, key=lambda w: zipf_frequency(w, "en"))
     return best if zipf_frequency(best, "en") > zipf_frequency(word, "en") else word
 
-# ✅ FINAL SAFE SIMPLIFIER
 def simplify_text(text):
     tokens = text.split()
     tagged = pos_tag(tokens)
@@ -106,12 +96,10 @@ def simplify_text(text):
     for token, tag in tagged:
         clean = token.strip(".,?!").lower()
 
-        # 🚫 NEVER TOUCH FUNCTION WORDS
         if clean in AUX_VERBS or clean in STOP_WORDS:
             output.append(token)
             continue
 
-        # 🚫 NEVER SIMPLIFY NOUNS (critical rule)
         if tag.startswith("N"):
             output.append(token)
             continue
@@ -124,8 +112,54 @@ def simplify_text(text):
 
     return " ".join(output)
 
-# ================= AUDIO CONFIG =================
+# ================= INTELLIGENT CORRECTION LAYER =================
+
+def intelligent_correction(hindi_text, english_text):
+    eng = english_text.lower().strip()
+
+    # --- Greeting Fixes ---
+    if "कैसे हो" in hindi_text or "कैसे हैं" in hindi_text:
+        return "How are you"
+
+    if "आप कैसे" in hindi_text:
+        return "How are you"
+
+    # --- Doing Question Fix ---
+    if "क्या कर रहे" in hindi_text:
+        return "What are you doing"
+
+    if eng.startswith("what are") and "doing" not in eng:
+        return "What are you doing"
+
+    # --- Missing 'you' after are ---
+    if eng.startswith("what are"):
+        return eng + " you"
+
+    if eng.startswith("how to get"):
+        return "How are you"
+
+    # --- Capitalize properly ---
+    eng = eng.capitalize()
+
+    # --- Add question mark if interrogative ---
+    if any(word in eng.lower() for word in ["how", "what", "why", "when", "where"]):
+        if not eng.endswith("?"):
+            eng += "?"
+
+    return eng
+
+# ================= PATH CONFIG =================
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+if platform.system() == "Windows":
+    PIPER_BIN = os.path.join(BASE_DIR, "piper_windows_amd64", "piper", "piper.exe")
+    PIPER_MODEL = os.path.join(BASE_DIR, "piper_windows_amd64", "piper", "en_US-lessac-medium.onnx")
+else:
+    PIPER_BIN = "piper"
+    PIPER_MODEL = os.path.join(BASE_DIR, "en_US-lessac-medium.onnx")
+
+# ================= VOSK =================
 
 def find_vosk_model():
     for name in os.listdir(BASE_DIR):
@@ -138,12 +172,7 @@ def find_vosk_model():
 
 VOSK_MODEL_PATH = find_vosk_model()
 if not VOSK_MODEL_PATH:
-    raise FileNotFoundError(
-        "Hindi Vosk model not found. Expected: vosk-model-small-hi-*"
-    )
-
-
-ESPEAK_PATH = "espeak-ng"
+    raise FileNotFoundError("Hindi Vosk model not found.")
 
 FORMAT = pyaudio.paInt16
 FRAMES_PER_BUFFER = 2048
@@ -154,13 +183,15 @@ VAD_FRAMES_TO_START = 2
 model = Model(VOSK_MODEL_PATH)
 p = pyaudio.PyAudio()
 
-# ================= ARGOS (HI → EN) =================
+# ================= ARGOS =================
+
 langs = argostranslate.get_installed_languages()
 hi = next(l for l in langs if l.code == "hi")
 en = next(l for l in langs if l.code == "en")
 translator = hi.get_translation(en)
 
 # ================= AUDIO STREAM =================
+
 def open_stream():
     for i in range(p.get_device_count()):
         try:
@@ -184,40 +215,41 @@ def open_stream():
 
 rec, stream = open_stream()
 
-# ================= TTS =================
+# ================= UNIVERSAL PIPER TTS =================
+
 def speak_text_en(text):
     if not text.strip():
         return
 
     try:
-        import pyttsx3
-        engine = pyttsx3.init()
-        engine.say(text)
-        engine.runAndWait()
-        return
-    except Exception:
-        pass
+        tmp_wav = tempfile.mktemp(".wav")
 
-    try:
         subprocess.run(
-            [ESPEAK_PATH, "-v", "en", text],
+            [
+                PIPER_BIN,
+                "--model", PIPER_MODEL,
+                "--output_file", tmp_wav
+            ],
+            input=text.encode("utf-8"),
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL
         )
-        return
-    except Exception:
-        pass
 
-    if HAS_GTTS:
-        try:
-            tmp = tempfile.mktemp(".mp3")
-            gTTS(text=text, lang="en").save(tmp)
-            playsound(tmp)
-            os.remove(tmp)
-        except Exception:
-            pass
+        if os.path.exists(tmp_wav):
+            if platform.system() == "Windows":
+                import winsound
+                winsound.PlaySound(tmp_wav, winsound.SND_FILENAME)
+            else:
+                subprocess.run(["aplay", tmp_wav],
+                               stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL)
+            os.remove(tmp_wav)
+
+    except Exception as e:
+        print("TTS Error:", e)
 
 # ================= SPEECH RECOGNITION =================
+
 def recognize_speech():
     rec.Reset()
     silent = voiced = 0
@@ -246,6 +278,7 @@ def recognize_speech():
             return ""
 
 # ================= MAIN =================
+
 print("\n🎤 Speak Hindi (Ctrl+C to exit)\n")
 
 try:
@@ -256,7 +289,9 @@ try:
 
         print("🗣 Hindi:", spoken_hi)
 
-        english = translator.translate(spoken_hi)
+        english_raw = translator.translate(spoken_hi)
+        english = intelligent_correction(spoken_hi, english_raw)
+
         print("🇬🇧 English:", english)
         speak_text_en(english)
 
