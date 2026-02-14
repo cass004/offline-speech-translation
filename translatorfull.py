@@ -1,5 +1,5 @@
 # Hindi Speech → English → Simplified English
-# FINAL VERSION (Bluetooth HFP Compatible + Local Piper)
+# FINAL STABLE VERSION (Bluetooth HFP Compatible)
 
 import os
 import json
@@ -118,7 +118,6 @@ if platform.system() == "Windows":
     PIPER_BIN = os.path.join(BASE_DIR, "piper_windows_amd64", "piper", "piper.exe")
     PIPER_MODEL = os.path.join(BASE_DIR, "piper_windows_amd64", "piper", "en_US-lessac-medium.onnx")
 else:
-    # Raspberry Pi local piper folder
     PIPER_BIN = os.path.join(BASE_DIR, "piper", "piper")
     PIPER_MODEL = os.path.join(BASE_DIR, "en_US-lessac-medium.onnx")
     PIPER_CONFIG = PIPER_MODEL + ".json"
@@ -187,22 +186,22 @@ def speak_text_en(text):
                 winsound.PlaySound(tmp_wav, winsound.SND_FILENAME)
                 os.remove(tmp_wav)
         else:
-            # 🔥 RAW streaming for Bluetooth HFP compatibility
-            p1 = subprocess.Popen(
-                [PIPER_BIN, "-m", PIPER_MODEL, "-c", PIPER_CONFIG, "--output-raw"],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL
-            )
-            p2 = subprocess.Popen(
-                ["paplay", "--format=s16le", "--rate=22050", "--channels=1"],
-                stdin=p1.stdout,
+            tmp_wav = tempfile.mktemp(".wav")
+
+            subprocess.run(
+                [PIPER_BIN, "-m", PIPER_MODEL, "-c", PIPER_CONFIG, "-f", tmp_wav],
+                input=text.encode("utf-8"),
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL
             )
-            p1.stdin.write(text.encode("utf-8"))
-            p1.stdin.close()
-            p2.communicate()
+
+            if os.path.exists(tmp_wav):
+                subprocess.run(
+                    ["paplay", "--rate=16000", tmp_wav],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+                os.remove(tmp_wav)
 
     except Exception as e:
         print("TTS Error:", e)
