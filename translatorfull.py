@@ -1,12 +1,12 @@
 # Hindi Speech → English → Simplified English
-# DEBUG VERSION (Shows Why File May Not Be Created)
+# FINAL VERSION (Bluetooth HFP Stable - Forced Sink)
 
 import os
 import json
 import subprocess
 import audioop
+import tempfile
 import platform
-import datetime
 
 import pyaudio
 from vosk import Model, KaldiRecognizer
@@ -55,18 +55,64 @@ def get_wordnet_pos(tag):
     if tag.startswith("R"): return wn.ADV
     return None
 
+def autocorrect(word):
+    if wn.synsets(word):
+        return word
+    matches = get_close_matches(word, wn.words(), n=1, cutoff=0.85)
+    return matches[0] if matches else word
+
+def get_simpler_word(word, pos=None):
+    if word in SIMPLE_MAP:
+        return SIMPLE_MAP[word]
+    if not pos:
+        return word
+    synsets = wn.synsets(word, pos=pos)
+    if not synsets:
+        return word
+    candidates = set()
+    for syn in synsets:
+        for lemma in syn.lemmas():
+            candidates.add(lemma.name().replace("_", " "))
+    best = max(candidates, key=lambda w: zipf_frequency(w, "en"))
+    return best if zipf_frequency(best, "en") > zipf_frequency(word, "en") else word
+
 def simplify_text(text):
     tokens = text.split()
     tagged = pos_tag(tokens)
     output = []
     for token, tag in tagged:
-        output.append(token)
+        clean = token.strip(".,?!").lower()
+        if clean in AUX_VERBS or clean in STOP_WORDS:
+            output.append(token)
+            continue
+        if tag.startswith("N"):
+            output.append(token)
+            continue
+        corrected = autocorrect(clean)
+        wn_pos = get_wordnet_pos(tag)
+        simple = get_simpler_word(corrected, wn_pos)
+        output.append(token.replace(clean, simple) if simple != clean else token)
     return " ".join(output)
+
+# ================= INTELLIGENT CORRECTION =================
+
+def intelligent_correction(hindi_text, english_text):
+    eng = english_text.lower().strip()
+    if "कैसे हो" in hindi_text or "कैसे हैं" in hindi_text:
+        return "How are you?"
+    if "क्या कर रहे" in hindi_text:
+        return "What are you doing?"
+    if eng.startswith("what are") and "doing" not in eng:
+        return "What are you doing?"
+    eng = eng.capitalize()
+    if any(w in eng.lower() for w in ["how","what","why","when","where"]):
+        if not eng.endswith("?"):
+            eng += "?"
+    return eng
 
 # ================= PATH CONFIG =================
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-print("BASE_DIR:", BASE_DIR)
 
 if platform.system() == "Windows":
     PIPER_BIN = os.path.join(BASE_DIR, "piper_windows_amd64", "piper", "piper.exe")
@@ -76,6 +122,7 @@ else:
     PIPER_MODEL = os.path.join(BASE_DIR, "piper", "en_US-lessac-medium.onnx")
     PIPER_CONFIG = PIPER_MODEL + ".json"
 
+# 🔥 Forced Bluetooth sink (your device)
 BLUETOOTH_SINK = "bluez_sink.74_D7_13_FD_39_CD.handsfree_head_unit"
 
 # ================= VOSK =================
@@ -92,6 +139,9 @@ if not VOSK_MODEL_PATH:
 
 FORMAT = pyaudio.paInt16
 FRAMES_PER_BUFFER = 2048
+SILENCE_FRAME_LIMIT = 60
+VAD_RMS_THRESHOLD = 600
+VAD_FRAMES_TO_START = 2
 
 model = Model(VOSK_MODEL_PATH)
 p = pyaudio.PyAudio()
@@ -125,41 +175,69 @@ def speak_text_en(text):
     if not text.strip():
         return
 
-    output_dir = os.path.join(BASE_DIR, "audio_outputs")
-    os.makedirs(output_dir, exist_ok=True)
-
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_file = os.path.join(output_dir, f"tts_{timestamp}.wav")
-
-    print("Saving to:", output_file)
-
     try:
-        result = subprocess.run(
-            [PIPER_BIN, "-m", PIPER_MODEL, "-c", PIPER_CONFIG, "-f", output_file],
-            input=text.encode("utf-8"),
-            capture_output=True
-        )
-
-        print("Piper return code:", result.returncode)
-        if result.stderr:
-            print("Piper stderr:", result.stderr.decode())
-
-        print("File exists after piper?", os.path.exists(output_file))
-
-        if os.path.exists(output_file):
+        if platform.system() == "Windows":
+            tmp_wav = tempfile.mktemp(".wav")
             subprocess.run(
-                [
-                    "paplay",
-                    "--rate=16000",
-                    "--device=" + BLUETOOTH_SINK,
-                    output_file
-                ]
+                [PIPER_BIN, "--model", PIPER_MODEL, "--output_file", tmp_wav],
+                input=text.encode("utf-8"),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
             )
+            if os.path.exists(tmp_wav):
+                import winsound
+                winsound.PlaySound(tmp_wav, winsound.SND_FILENAME)
+                os.remove(tmp_wav)
         else:
-            print("❌ File was not created.")
+            tmp_wav = tempfile.mktemp(".wav")
+
+            subprocess.run(
+                [PIPER_BIN, "-m", PIPER_MODEL, "-c", PIPER_CONFIG, "-f", tmp_wav],
+                input=text.encode("utf-8"),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+
+            if os.path.exists(tmp_wav):
+                subprocess.run(
+                    [
+                        "paplay",
+                        "--rate=16000",
+                        "--device=" + BLUETOOTH_SINK,
+                        tmp_wav
+                    ],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+                os.remove(tmp_wav)
 
     except Exception as e:
         print("TTS Error:", e)
+
+# ================= SPEECH RECOGNITION =================
+
+def recognize_speech():
+    rec.Reset()
+    silent = voiced = 0
+    in_speech = False
+    while True:
+        data = stream.read(FRAMES_PER_BUFFER, exception_on_overflow=False)
+        rms = audioop.rms(data, 2)
+        if rms >= VAD_RMS_THRESHOLD:
+            voiced += 1
+            silent = 0
+            if not in_speech and voiced >= VAD_FRAMES_TO_START:
+                in_speech = True
+                rec.Reset()
+        else:
+            silent += 1
+            voiced = 0
+        if rec.AcceptWaveform(data):
+            text = json.loads(rec.Result()).get("text", "")
+            if text:
+                return text
+        if in_speech and silent > SILENCE_FRAME_LIMIT:
+            return ""
 
 # ================= MAIN =================
 
@@ -167,18 +245,22 @@ print("\n🎤 Speak Hindi (Ctrl+C to exit)\n")
 
 try:
     while True:
-        data = stream.read(FRAMES_PER_BUFFER, exception_on_overflow=False)
-        if rec.AcceptWaveform(data):
-            spoken_hi = json.loads(rec.Result()).get("text", "")
-            if not spoken_hi:
-                continue
+        spoken_hi = recognize_speech()
+        if not spoken_hi:
+            continue
 
-            print("🗣 Hindi:", spoken_hi)
+        print("🗣 Hindi:", spoken_hi)
 
-            english = translator.translate(spoken_hi)
-            print("🇬🇧 English:", english)
+        english_raw = translator.translate(spoken_hi)
+        english = intelligent_correction(spoken_hi, english_raw)
 
-            speak_text_en(english)
+        print("🇬🇧 English:", english)
+        speak_text_en(english)
+
+        if input("Simplify English sentence? (y/n): ").strip().lower() == "y":
+            simplified = simplify_text(english)
+            print("✨ Simplified English:", simplified)
+            speak_text_en(simplified)
 
 except KeyboardInterrupt:
     print("\nExiting...")
