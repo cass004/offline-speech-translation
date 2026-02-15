@@ -73,7 +73,7 @@ if platform.system() == "Windows":
     PIPER_MODEL = os.path.join(BASE_DIR, "piper_windows_amd64", "piper", "en_US-lessac-medium.onnx")
 else:
     PIPER_BIN = os.path.join(BASE_DIR, "piper", "piper")
-    PIPER_MODEL = os.path.join(BASE_DIR, "en_US-lessac-medium.onnx")
+    PIPER_MODEL = os.path.join(BASE_DIR, "piper", "en_US-lessac-medium.onnx")
     PIPER_CONFIG = PIPER_MODEL + ".json"
 
 BLUETOOTH_SINK = "bluez_sink.74_D7_13_FD_39_CD.handsfree_head_unit"
