@@ -1,12 +1,12 @@
 # Hindi Speech → English → Simplified English
-# FINAL VERSION (Bluetooth HFP Stable - Forced Sink)
+# FINAL VERSION (Creates Audio File + Plays It)
 
 import os
 import json
 import subprocess
 import audioop
-import tempfile
 import platform
+import datetime
 
 import pyaudio
 from vosk import Model, KaldiRecognizer
@@ -122,7 +122,7 @@ else:
     PIPER_MODEL = os.path.join(BASE_DIR, "en_US-lessac-medium.onnx")
     PIPER_CONFIG = PIPER_MODEL + ".json"
 
-# 🔥 Forced Bluetooth sink (your device)
+# 🔥 Your Bluetooth Sink
 BLUETOOTH_SINK = "bluez_sink.74_D7_13_FD_39_CD.handsfree_head_unit"
 
 # ================= VOSK =================
@@ -169,47 +169,53 @@ def open_stream():
 
 rec, stream = open_stream()
 
-# ================= PIPER TTS =================
+# ================= PIPER TTS (Save + Play) =================
 
 def speak_text_en(text):
     if not text.strip():
         return
 
     try:
+        # Create folder for audio outputs
+        output_dir = os.path.join(BASE_DIR, "audio_outputs")
+        os.makedirs(output_dir, exist_ok=True)
+
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_file = os.path.join(output_dir, f"tts_{timestamp}.wav")
+
         if platform.system() == "Windows":
-            tmp_wav = tempfile.mktemp(".wav")
             subprocess.run(
-                [PIPER_BIN, "--model", PIPER_MODEL, "--output_file", tmp_wav],
+                [PIPER_BIN, "--model", PIPER_MODEL, "--output_file", output_file],
                 input=text.encode("utf-8"),
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL
             )
-            if os.path.exists(tmp_wav):
+
+            if os.path.exists(output_file):
                 import winsound
-                winsound.PlaySound(tmp_wav, winsound.SND_FILENAME)
-                os.remove(tmp_wav)
-        else:
-            tmp_wav = tempfile.mktemp(".wav")
+                winsound.PlaySound(output_file, winsound.SND_FILENAME)
 
+        else:
             subprocess.run(
-                [PIPER_BIN, "-m", PIPER_MODEL, "-c", PIPER_CONFIG, "-f", tmp_wav],
+                [PIPER_BIN, "-m", PIPER_MODEL, "-c", PIPER_CONFIG, "-f", output_file],
                 input=text.encode("utf-8"),
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL
             )
 
-            if os.path.exists(tmp_wav):
+            if os.path.exists(output_file):
                 subprocess.run(
                     [
                         "paplay",
                         "--rate=16000",
                         "--device=" + BLUETOOTH_SINK,
-                        tmp_wav
+                        output_file
                     ],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL
                 )
-                os.remove(tmp_wav)
+
+        print(f"🔊 Audio saved at: {output_file}")
 
     except Exception as e:
         print("TTS Error:", e)
