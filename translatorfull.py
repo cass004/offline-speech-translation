@@ -1,7 +1,7 @@
 # ============================================================
 # Hindi → English → Simplified AI Translator
 # Wake Once → Continuous Listening
-# Auto Screen Fit Version
+# 320x480 TFT Optimized (GUI Only Changed)
 # ============================================================
 
 import os
@@ -24,6 +24,8 @@ from difflib import get_close_matches
 # ================= BASE PATH =================
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# ================= AUTO MODEL DETECT =================
 
 def find_model(lang_code):
     for name in os.listdir(BASE_DIR):
@@ -163,6 +165,7 @@ def assistant_loop(ui):
 
     wake_model = Model(EN_MODEL_PATH)
     hindi_model = Model(HI_MODEL_PATH)
+
     p = pyaudio.PyAudio()
 
     ui.show_waiting()
@@ -209,28 +212,26 @@ def assistant_loop(ui):
 
             ui.last_hindi = spoken_hi
             ui.last_english = english
+            ui.last_simplified = None
 
             ui.show_translation(english)
 
             speak_text_en(english)
 
-# ================= GUI =================
+# ================= GUI (ONLY PART CHANGED FOR TFT) =================
 
 class ModernTranslatorUI:
 
     def __init__(self, root):
         self.root = root
         self.root.title("AI Speech Translator")
+        self.root.geometry("320x480")   # 🔥 TFT SIZE
         self.root.configure(bg="#000000")
-
-        # 🔥 AUTO MAXIMIZE WINDOW
-        if platform.system() == "Windows":
-            self.root.state("zoomed")
-        else:
-            self.root.attributes("-fullscreen", True)
+        self.root.resizable(False, False)
 
         self.last_hindi = None
         self.last_english = None
+        self.last_simplified = None
 
         self.build_ui()
 
@@ -242,18 +243,19 @@ class ModernTranslatorUI:
 
     def build_ui(self):
 
-        # Green Dot (Left Upper Middle)
+        # 🟢 Green Dot
         self.light_canvas = tk.Canvas(
             self.root,
-            width=25,
-            height=25,
+            width=15,
+            height=15,
             bg="#000000",
             highlightthickness=0
         )
-        self.light_canvas.place(relx=0.05, rely=0.10)
+        self.light_canvas.place(relx=0.05, rely=0.20)
 
         self.light = self.light_canvas.create_oval(
-            5,5,20,20, fill="gray"
+            2, 2, 13, 13,
+            fill="gray"
         )
 
         self.container = tk.Frame(self.root, bg="#000000")
@@ -262,34 +264,37 @@ class ModernTranslatorUI:
         self.hindi_label = tk.Label(
             self.container,
             text="",
-            font=("Segoe UI", 28),
+            font=("Segoe UI", 12),
             fg="#AAAAAA",
             bg="#000000",
-            wraplength=self.root.winfo_screenwidth()-200,
+            wraplength=300,
             justify="center"
         )
-        self.hindi_label.pack(pady=20)
+        self.hindi_label.pack(pady=5)
 
         self.english_label = tk.Label(
             self.container,
             text="",
-            font=("Segoe UI", 60, "bold"),
+            font=("Segoe UI", 20, "bold"),
             fg="white",
             bg="#000000",
-            wraplength=self.root.winfo_screenwidth()-200,
+            wraplength=300,
             justify="center"
         )
-        self.english_label.pack(pady=20)
+        self.english_label.pack(pady=5)
 
         tk.Button(
             self.root,
             text="✨ Simplify",
-            font=("Segoe UI", 16, "bold"),
+            font=("Segoe UI", 12, "bold"),
             bg="#222222",
             fg="white",
             relief="flat",
+            height=2,
             command=self.simplify
-        ).pack(pady=30)
+        ).pack(side="bottom", pady=15)
+
+    # ---------- DISPLAY STATES (UNCHANGED LOGIC) ----------
 
     def show_waiting(self):
         self.hindi_label.config(text="")
