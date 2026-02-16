@@ -278,7 +278,7 @@ class ModernTranslatorUI:
         )
 
         self.container = tk.Frame(self.root, bg="#000000")
-        self.container.pack(expand=True, pady=(0, 40))
+        self.container.pack(expand=True, pady=(0, 80))
 
         self.hindi_label = tk.Label(
             self.container,
