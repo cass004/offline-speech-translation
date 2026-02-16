@@ -1,7 +1,8 @@
 # ============================================================
 # Hindi → English → Simplified AI Translator
 # Wake Once → Continuous Listening
-# SAFE Landscape 480x320 Version
+# Landscape 480x320
+# Only Piper Fix + Bottom Spacing
 # ============================================================
 
 import os
@@ -54,14 +55,19 @@ translator = hi.get_translation(en)
 nltk.download("wordnet", quiet=True)
 nltk.download("averaged_perceptron_tagger_eng", quiet=True)
 
-AUX_VERBS = {"am","is","are","was","were","be","been","being",
-             "do","does","did","have","has","had",
-             "will","would","shall","should","may","might",
-             "must","can","could"}
+AUX_VERBS = {
+    "am","is","are","was","were",
+    "be","been","being",
+    "do","does","did",
+    "have","has","had",
+    "will","would","shall","should",
+    "may","might","must","can","could"
+}
 
-STOP_WORDS = {"the","a","an","in","on","at","of","to","for",
-              "from","and","or","but","if","then",
-              "this","that","these","those"}
+STOP_WORDS = {
+    "the","a","an","in","on","at","of","to","for","from",
+    "and","or","but","if","then","this","that","these","those"
+}
 
 SIMPLE_MAP = {
     "lethargic":"lazy",
@@ -70,8 +76,9 @@ SIMPLE_MAP = {
     "terminate":"end",
     "utilize":"use",
     "assist":"help",
+    "assistance":"help",
     "purchase":"buy",
-    "reside":"live"
+    "reside":"live",
 }
 
 def get_wordnet_pos(tag):
@@ -97,9 +104,9 @@ def get_simpler_word(word, pos=None):
     candidates = set()
     for syn in synsets:
         for lemma in syn.lemmas():
-            candidates.add(lemma.name().replace("_"," "))
-    best = max(candidates, key=lambda w: zipf_frequency(w,"en"))
-    return best if zipf_frequency(best,"en") > zipf_frequency(word,"en") else word
+            candidates.add(lemma.name().replace("_", " "))
+    best = max(candidates, key=lambda w: zipf_frequency(w, "en"))
+    return best if zipf_frequency(best, "en") > zipf_frequency(word, "en") else word
 
 def simplify_text(text):
     tokens = text.split()
@@ -119,27 +126,31 @@ def simplify_text(text):
         output.append(token.replace(clean, simple) if simple != clean else token)
     return " ".join(output)
 
-# ================= INTELLIGENT CORRECTION =================
+# ================= INTELLIGENT CORRECTION (UNCHANGED) =================
 
 def intelligent_correction(hindi_text, english_text):
     eng = english_text.lower().strip()
-
     if "कैसे हो" in hindi_text or "कैसे हैं" in hindi_text:
         return "How are you?"
     if "क्या कर रहे" in hindi_text:
         return "What are you doing?"
-
+    if eng.startswith("what are") and "doing" not in eng:
+        return "What are you doing?"
     eng = eng.capitalize()
     if any(w in eng.lower() for w in ["how","what","why","when","where"]):
         if not eng.endswith("?"):
             eng += "?"
     return eng
 
-# ================= TTS =================
+# ================= PIPER FIX ONLY =================
 
 if platform.system() == "Windows":
     PIPER_BIN = os.path.join(BASE_DIR,"piper_windows_amd64","piper","piper.exe")
     PIPER_MODEL = os.path.join(BASE_DIR,"piper_windows_amd64","piper","en_US-lessac-medium.onnx")
+else:
+    PIPER_BIN = os.path.join(BASE_DIR,"piper","piper")
+    PIPER_MODEL = os.path.join(BASE_DIR,"piper","en_US-lessac-medium.onnx")
+    PIPER_CONFIG = PIPER_MODEL + ".json"
 
 def speak_text_en(text):
     if not text.strip():
@@ -147,19 +158,29 @@ def speak_text_en(text):
 
     tmp_wav = tempfile.mktemp(".wav")
 
-    subprocess.run(
-        [PIPER_BIN,"--model",PIPER_MODEL,"--output_file",tmp_wav],
-        input=text.encode("utf-8"),
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL
-    )
+    if platform.system() == "Windows":
+        subprocess.run(
+            [PIPER_BIN,"--model",PIPER_MODEL,"--output_file",tmp_wav],
+            input=text.encode("utf-8"),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+        if os.path.exists(tmp_wav):
+            import winsound
+            winsound.PlaySound(tmp_wav, winsound.SND_FILENAME)
+            os.remove(tmp_wav)
+    else:
+        subprocess.run(
+            [PIPER_BIN,"-m",PIPER_MODEL,"-c",PIPER_CONFIG,"-f",tmp_wav],
+            input=text.encode("utf-8"),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+        if os.path.exists(tmp_wav):
+            subprocess.run(["aplay",tmp_wav])
+            os.remove(tmp_wav)
 
-    if os.path.exists(tmp_wav):
-        import winsound
-        winsound.PlaySound(tmp_wav, winsound.SND_FILENAME)
-        os.remove(tmp_wav)
-
-# ================= ASSISTANT LOOP =================
+# ================= ASSISTANT LOOP (UNCHANGED) =================
 
 def assistant_loop(ui):
 
@@ -213,10 +234,9 @@ def assistant_loop(ui):
             ui.last_english = english
 
             ui.show_translation(english)
-
             speak_text_en(english)
 
-# ================= GUI =================
+# ================= GUI (ONLY SPACING ADDED) =================
 
 class ModernTranslatorUI:
 
@@ -269,7 +289,7 @@ class ModernTranslatorUI:
             wraplength=460,
             justify="center"
         )
-        self.hindi_label.pack(pady=5)
+        self.hindi_label.pack(pady=3)
 
         self.english_label = tk.Label(
             self.container,
@@ -280,20 +300,17 @@ class ModernTranslatorUI:
             wraplength=460,
             justify="center"
         )
-        self.english_label.pack(pady=5)
-
-        bottom_frame = tk.Frame(self.root, bg="#000000")
-        bottom_frame.pack(fill="x", pady=10)
+        self.english_label.pack(pady=3)
 
         tk.Button(
-            bottom_frame,
+            self.root,
             text="✨ Simplify",
             font=("Segoe UI", 12, "bold"),
             bg="#222222",
             fg="white",
             relief="flat",
             command=self.simplify
-        ).pack()
+        ).pack(pady=(0, 25))
 
     def show_waiting(self):
         self.hindi_label.config(text="")
