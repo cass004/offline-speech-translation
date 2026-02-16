@@ -310,7 +310,7 @@ class ModernTranslatorUI:
             fg="white",
             relief="flat",
             command=self.simplify
-        ).pack(pady=(0, 10))
+        ).pack(pady=(0, 40))
 
     def show_waiting(self):
         self.hindi_label.config(text="")
