@@ -218,14 +218,14 @@ def assistant_loop(ui):
 
             speak_text_en(english)
 
-# ================= GUI (ONLY PART CHANGED FOR TFT) =================
+# ================= GUI (LANDSCAPE 480x320) =================
 
 class ModernTranslatorUI:
 
     def __init__(self, root):
         self.root = root
         self.root.title("AI Speech Translator")
-        self.root.geometry("320x480")   # 🔥 TFT SIZE
+        self.root.geometry("480x320")   # 🔥 LANDSCAPE MODE
         self.root.configure(bg="#000000")
         self.root.resizable(False, False)
 
@@ -243,46 +243,49 @@ class ModernTranslatorUI:
 
     def build_ui(self):
 
-        # 🟢 Green Dot
+        # 🟢 Green Dot (left upper-middle area)
         self.light_canvas = tk.Canvas(
             self.root,
-            width=15,
-            height=15,
+            width=18,
+            height=18,
             bg="#000000",
             highlightthickness=0
         )
-        self.light_canvas.place(relx=0.05, rely=0.20)
+        self.light_canvas.place(relx=0.03, rely=0.15)
 
         self.light = self.light_canvas.create_oval(
-            2, 2, 13, 13,
+            3, 3, 15, 15,
             fill="gray"
         )
 
         self.container = tk.Frame(self.root, bg="#000000")
         self.container.pack(expand=True)
 
+        # Hindi (smaller top)
         self.hindi_label = tk.Label(
             self.container,
             text="",
-            font=("Segoe UI", 12),
+            font=("Segoe UI", 14),
             fg="#AAAAAA",
             bg="#000000",
-            wraplength=300,
+            wraplength=440,
             justify="center"
         )
         self.hindi_label.pack(pady=5)
 
+        # English (big center)
         self.english_label = tk.Label(
             self.container,
             text="",
-            font=("Segoe UI", 20, "bold"),
+            font=("Segoe UI", 26, "bold"),
             fg="white",
             bg="#000000",
-            wraplength=300,
+            wraplength=440,
             justify="center"
         )
         self.english_label.pack(pady=5)
 
+        # Simplify button (right bottom corner for landscape)
         tk.Button(
             self.root,
             text="✨ Simplify",
@@ -290,9 +293,8 @@ class ModernTranslatorUI:
             bg="#222222",
             fg="white",
             relief="flat",
-            height=2,
             command=self.simplify
-        ).pack(side="bottom", pady=15)
+        ).place(relx=0.75, rely=0.85)
 
     # ---------- DISPLAY STATES (UNCHANGED LOGIC) ----------
 
@@ -324,10 +326,3 @@ class ModernTranslatorUI:
 
     def set_listening_mode(self):
         self.light_canvas.itemconfig(self.light, fill="#00FF00")
-
-# ================= START =================
-
-if __name__ == "__main__":
-    root = tk.Tk()
-    app = ModernTranslatorUI(root)
-    root.mainloop()
