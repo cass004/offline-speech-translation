@@ -1,7 +1,7 @@
 # ============================================================
 # Hindi → English → Simplified AI Translator
 # Wake Once → Continuous Listening
-# 320x480 TFT Optimized (GUI Only Changed)
+# SAFE Landscape 480x320 Version
 # ============================================================
 
 import os
@@ -165,7 +165,6 @@ def assistant_loop(ui):
 
     wake_model = Model(EN_MODEL_PATH)
     hindi_model = Model(HI_MODEL_PATH)
-
     p = pyaudio.PyAudio()
 
     ui.show_waiting()
@@ -212,26 +211,24 @@ def assistant_loop(ui):
 
             ui.last_hindi = spoken_hi
             ui.last_english = english
-            ui.last_simplified = None
 
             ui.show_translation(english)
 
             speak_text_en(english)
 
-# ================= GUI (LANDSCAPE 480x320) =================
+# ================= GUI =================
 
 class ModernTranslatorUI:
 
     def __init__(self, root):
         self.root = root
         self.root.title("AI Speech Translator")
-        self.root.geometry("480x320")   # 🔥 LANDSCAPE MODE
+        self.root.geometry("480x320")
         self.root.configure(bg="#000000")
         self.root.resizable(False, False)
 
         self.last_hindi = None
         self.last_english = None
-        self.last_simplified = None
 
         self.build_ui()
 
@@ -243,60 +240,60 @@ class ModernTranslatorUI:
 
     def build_ui(self):
 
-        # 🟢 Green Dot (left upper-middle area)
+        top_frame = tk.Frame(self.root, bg="#000000")
+        top_frame.pack(fill="x", pady=5)
+
         self.light_canvas = tk.Canvas(
-            self.root,
-            width=18,
-            height=18,
+            top_frame,
+            width=15,
+            height=15,
             bg="#000000",
             highlightthickness=0
         )
-        self.light_canvas.place(relx=0.03, rely=0.15)
+        self.light_canvas.pack(side="left", padx=10)
 
         self.light = self.light_canvas.create_oval(
-            3, 3, 15, 15,
+            2, 2, 13, 13,
             fill="gray"
         )
 
         self.container = tk.Frame(self.root, bg="#000000")
         self.container.pack(expand=True)
 
-        # Hindi (smaller top)
         self.hindi_label = tk.Label(
             self.container,
             text="",
             font=("Segoe UI", 14),
             fg="#AAAAAA",
             bg="#000000",
-            wraplength=440,
+            wraplength=460,
             justify="center"
         )
         self.hindi_label.pack(pady=5)
 
-        # English (big center)
         self.english_label = tk.Label(
             self.container,
             text="",
             font=("Segoe UI", 26, "bold"),
             fg="white",
             bg="#000000",
-            wraplength=440,
+            wraplength=460,
             justify="center"
         )
         self.english_label.pack(pady=5)
 
-        # Simplify button (right bottom corner for landscape)
+        bottom_frame = tk.Frame(self.root, bg="#000000")
+        bottom_frame.pack(fill="x", pady=10)
+
         tk.Button(
-            self.root,
+            bottom_frame,
             text="✨ Simplify",
             font=("Segoe UI", 12, "bold"),
             bg="#222222",
             fg="white",
             relief="flat",
             command=self.simplify
-        ).place(relx=0.75, rely=0.85)
-
-    # ---------- DISPLAY STATES (UNCHANGED LOGIC) ----------
+        ).pack()
 
     def show_waiting(self):
         self.hindi_label.config(text="")
@@ -326,3 +323,10 @@ class ModernTranslatorUI:
 
     def set_listening_mode(self):
         self.light_canvas.itemconfig(self.light, fill="#00FF00")
+
+# ================= START =================
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = ModernTranslatorUI(root)
+    root.mainloop()
