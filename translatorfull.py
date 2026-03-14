@@ -3,6 +3,7 @@
 # Wake Once → Continuous Listening
 # Landscape 480x320
 # Only Piper Fix + Bottom Spacing
+# + Swap Button + Stop Command
 # ============================================================
 
 import os
@@ -21,6 +22,10 @@ from nltk.corpus import wordnet as wn
 from nltk import pos_tag
 from wordfreq import zipf_frequency
 from difflib import get_close_matches
+
+# ================= LANGUAGE MODE =================
+
+LANG_MODE = "HI_TO_EN"
 
 # ================= BASE PATH =================
 
@@ -48,7 +53,9 @@ if not HI_MODEL_PATH:
 langs = argostranslate.get_installed_languages()
 hi = next(l for l in langs if l.code == "hi")
 en = next(l for l in langs if l.code == "en")
-translator = hi.get_translation(en)
+
+translator_hi_en = hi.get_translation(en)
+translator_en_hi = en.get_translation(hi)
 
 # ================= NLP SIMPLIFIER =================
 
@@ -180,7 +187,7 @@ def speak_text_en(text):
             subprocess.run(["aplay",tmp_wav])
             os.remove(tmp_wav)
 
-# ================= ASSISTANT LOOP (UNCHANGED) =================
+# ================= ASSISTANT LOOP =================
 
 def assistant_loop(ui):
 
@@ -221,22 +228,40 @@ def assistant_loop(ui):
         data = hindi_stream.read(2048, exception_on_overflow=False)
 
         if hindi_rec.AcceptWaveform(data):
-            spoken_hi = json.loads(hindi_rec.Result()).get("text","")
-            if not spoken_hi:
+            spoken_text = json.loads(hindi_rec.Result()).get("text","")
+
+            if not spoken_text:
                 continue
 
-            ui.show_hindi(spoken_hi)
+            if "stop" in spoken_text or "pause" in spoken_text:
+                ui.show_translation("Paused. Say hello to wake again.")
+                ui.set_idle_mode()
+                break
 
-            english_raw = translator.translate(spoken_hi)
-            english = intelligent_correction(spoken_hi, english_raw)
+            ui.show_hindi(spoken_text)
 
-            ui.last_hindi = spoken_hi
-            ui.last_english = english
+            if LANG_MODE == "HI_TO_EN":
 
-            ui.show_translation(english)
-            speak_text_en(english)
+                english_raw = translator_hi_en.translate(spoken_text)
+                english = intelligent_correction(spoken_text, english_raw)
 
-# ================= GUI (ONLY SPACING ADDED) =================
+                ui.last_hindi = spoken_text
+                ui.last_english = english
+
+                ui.show_translation(english)
+                speak_text_en(english)
+
+            else:
+
+                hindi_text = translator_en_hi.translate(spoken_text)
+
+                ui.last_hindi = spoken_text
+                ui.last_english = hindi_text
+
+                ui.show_translation(hindi_text)
+                speak_text_en(hindi_text)
+
+# ================= GUI =================
 
 class ModernTranslatorUI:
 
@@ -302,15 +327,39 @@ class ModernTranslatorUI:
         )
         self.english_label.pack(pady=3)
 
+        btn_frame = tk.Frame(self.root, bg="#000000")
+        btn_frame.pack(pady=(0,40))
+
         tk.Button(
-            self.root,
+            btn_frame,
             text="✨ Simplify",
             font=("Segoe UI", 12, "bold"),
             bg="#222222",
             fg="white",
             relief="flat",
             command=self.simplify
-        ).pack(pady=(0, 40))
+        ).pack(side="left", padx=10)
+
+        tk.Button(
+            btn_frame,
+            text="🔄 Swap",
+            font=("Segoe UI", 12, "bold"),
+            bg="#222222",
+            fg="white",
+            relief="flat",
+            command=self.swap_languages
+        ).pack(side="left", padx=10)
+
+    def swap_languages(self):
+
+        global LANG_MODE
+
+        if LANG_MODE == "HI_TO_EN":
+            LANG_MODE = "EN_TO_HI"
+            self.english_label.config(text="Mode: English → Hindi")
+        else:
+            LANG_MODE = "HI_TO_EN"
+            self.english_label.config(text="Mode: Hindi → English")
 
     def show_waiting(self):
         self.hindi_label.config(text="")
