@@ -232,6 +232,20 @@ def assistant_loop(ui):
 
         data = stream.read(2048, exception_on_overflow=False)
 
+        # ===== PARTIAL STOP DETECTION (ADDED FIX) =====
+        if LANG_MODE == "HI_TO_EN":
+            partial = json.loads(hindi_rec.PartialResult()).get("partial","")
+        else:
+            partial = json.loads(english_rec.PartialResult()).get("partial","")
+
+        if "stop" in partial or "pause" in partial:
+            stream.close()
+            ui.show_waiting()
+            ui.set_idle_mode()
+            assistant_loop(ui)
+            return
+        # =============================================
+
         if (LANG_MODE == "HI_TO_EN" and hindi_rec.AcceptWaveform(data)) or \
            (LANG_MODE == "EN_TO_HI" and english_rec.AcceptWaveform(data)):
 
@@ -242,16 +256,6 @@ def assistant_loop(ui):
 
             if not spoken_text:
                 continue
-
-            if "stop" in spoken_text or "pause" in spoken_text:
-
-                stream.close()
-
-                ui.show_waiting()
-                ui.set_idle_mode()
-
-                assistant_loop(ui)
-                return
 
             ui.show_hindi(spoken_text)
 
