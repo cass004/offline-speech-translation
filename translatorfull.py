@@ -244,9 +244,14 @@ def assistant_loop(ui):
                 continue
 
             if "stop" in spoken_text or "pause" in spoken_text:
-                ui.show_translation("Paused. Say hello to wake again.")
+
+                stream.close()
+
+                ui.show_waiting()
                 ui.set_idle_mode()
-                break
+
+                assistant_loop(ui)
+                return
 
             ui.show_hindi(spoken_text)
 
