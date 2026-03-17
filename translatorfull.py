@@ -1,7 +1,6 @@
 # ============================================================
 # Hindi → English → Simplified AI Translator
-# + ONLINE MODE
-# + FIXED ONLINE SWAP (NO OTHER CHANGES)
+# OFFLINE + ONLINE (FULL FINAL VERSION)
 # ============================================================
 
 import os
@@ -26,6 +25,8 @@ from difflib import get_close_matches
 
 # ================= MODE =================
 MODE = "OFFLINE"
+
+# ================= LANGUAGE MODE =================
 LANG_MODE = "HI_TO_EN"
 
 # ================= NETWORK =================
@@ -68,12 +69,9 @@ nltk.download("wordnet", quiet=True)
 nltk.download("averaged_perceptron_tagger_eng", quiet=True)
 
 AUX_VERBS = {
-    "am","is","are","was","were",
-    "be","been","being",
-    "do","does","did",
-    "have","has","had",
-    "will","would","shall","should",
-    "may","might","must","can","could"
+    "am","is","are","was","were","be","been","being",
+    "do","does","did","have","has","had",
+    "will","would","shall","should","may","might","must","can","could"
 }
 
 STOP_WORDS = {
@@ -82,15 +80,9 @@ STOP_WORDS = {
 }
 
 SIMPLE_MAP = {
-    "lethargic":"lazy",
-    "fatigued":"tired",
-    "commence":"start",
-    "terminate":"end",
-    "utilize":"use",
-    "assist":"help",
-    "assistance":"help",
-    "purchase":"buy",
-    "reside":"live",
+    "lethargic":"lazy","fatigued":"tired","commence":"start",
+    "terminate":"end","utilize":"use","assist":"help",
+    "assistance":"help","purchase":"buy","reside":"live",
 }
 
 def get_wordnet_pos(tag):
@@ -156,73 +148,82 @@ def intelligent_correction(hindi_text, english_text):
 # ================= PIPER =================
 if platform.system() == "Windows":
     PIPER_BIN = os.path.join(BASE_DIR,"piper_windows_amd64","piper","piper.exe")
-    PIPER_EN = os.path.join(BASE_DIR,"piper_windows_amd64","piper","en_US-lessac-medium.onnx")
-    PIPER_HI = os.path.join(BASE_DIR,"piper_windows_amd64","piper","hi_IN-medium.onnx")
+    PIPER_MODEL = os.path.join(BASE_DIR,"piper_windows_amd64","piper","en_US-lessac-medium.onnx")
 else:
     PIPER_BIN = os.path.join(BASE_DIR,"piper","piper")
-    PIPER_EN = os.path.join(BASE_DIR,"piper","en_US-lessac-medium.onnx")
-    PIPER_HI = os.path.join(BASE_DIR,"piper","hi_IN-medium.onnx")
-    PIPER_CONFIG = PIPER_EN + ".json"
+    PIPER_MODEL = os.path.join(BASE_DIR,"piper","en_US-lessac-medium.onnx")
+    PIPER_CONFIG = PIPER_MODEL + ".json"
 
-def speak_text(text, lang="en"):
+def speak_text_en(text):
     if not text.strip():
         return
 
-    model = PIPER_EN if lang == "en" else PIPER_HI
     tmp_wav = tempfile.mktemp(".wav")
 
     if platform.system() == "Windows":
-        subprocess.run(
-            [PIPER_BIN,"--model",model,"--output_file",tmp_wav],
-            input=text.encode("utf-8"),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
-        )
+        subprocess.run([PIPER_BIN,"--model",PIPER_MODEL,"--output_file",tmp_wav],
+            input=text.encode("utf-8"), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         if os.path.exists(tmp_wav):
             import winsound
             winsound.PlaySound(tmp_wav, winsound.SND_FILENAME)
             os.remove(tmp_wav)
     else:
-        subprocess.run(
-            [PIPER_BIN,"-m",model,"-c",PIPER_CONFIG,"-f",tmp_wav],
-            input=text.encode("utf-8"),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
-        )
+        subprocess.run([PIPER_BIN,"-m",PIPER_MODEL,"-c",PIPER_CONFIG,"-f",tmp_wav],
+            input=text.encode("utf-8"), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         if os.path.exists(tmp_wav):
             subprocess.run(["aplay",tmp_wav])
             os.remove(tmp_wav)
 
-# ================= ONLINE FUNCTION =================
-def online_listen_translate(ui):
-    recognizer = sr.Recognizer()
+# ================= ONLINE PROCESS =================
+def online_process(ui, recognizer, listening_mode):
 
     try:
         with sr.Microphone() as source:
-            audio = recognizer.listen(source, phrase_time_limit=4)
+            audio = recognizer.listen(source, phrase_time_limit=3)
 
-        if LANG_MODE == "HI_TO_EN":
-            text = recognizer.recognize_google(audio, language="hi-IN")
-            ui.show_hindi(text)
+        try:
+            cmd = recognizer.recognize_google(audio, language="en-IN").lower()
+        except:
+            cmd = ""
 
-            translated = GoogleTranslator(source="hi", target="en").translate(text)
-            ui.show_translation(translated)
+        if not listening_mode and "hello" in cmd:
+            ui.set_listening_mode()
+            ui.show_listening()
+            return True
 
-            speak_text(translated, "en")
+        elif listening_mode and any(c in cmd for c in ["stop","pause"]):
+            ui.set_idle_mode()
+            ui.show_waiting()
+            return False
 
-        else:
-            text = recognizer.recognize_google(audio, language="en-IN")
-            ui.show_hindi(text)
+        if listening_mode:
 
-            translated = GoogleTranslator(source="en", target="hi").translate(text)
-            ui.show_translation(translated)
+            if LANG_MODE == "HI_TO_EN":
+                text = recognizer.recognize_google(audio, language="hi-IN")
+                ui.show_hindi(text)
 
-            speak_text(translated, "hi")
+                translated = GoogleTranslator(source="hi", target="en").translate(text)
+                ui.last_hindi = text
+                ui.last_english = translated
+
+                ui.show_translation(translated)
+                speak_text_en(translated)
+
+            else:
+                text = recognizer.recognize_google(audio, language="en-IN")
+                ui.show_hindi(text)
+
+                translated = GoogleTranslator(source="en", target="hi").translate(text)
+                ui.last_hindi = text
+                ui.last_english = translated
+
+                ui.show_translation(translated)
+                speak_text_en(translated)
 
     except:
         pass
 
-# ================= REST OF YOUR ORIGINAL CODE UNCHANGED =================
+    return listening_mode
 
 # ================= ASSISTANT LOOP =================
 def assistant_loop(ui):
@@ -244,6 +245,7 @@ def assistant_loop(ui):
     en_rec = KaldiRecognizer(english_model,16000)
     hi_rec = KaldiRecognizer(hindi_model,16000)
 
+    recognizer_online = sr.Recognizer()
     listening_mode = False
 
     while True:
@@ -252,7 +254,8 @@ def assistant_loop(ui):
             if not is_connected():
                 ui.show_no_network()
                 continue
-            online_listen_translate(ui)
+
+            listening_mode = online_process(ui, recognizer_online, listening_mode)
             continue
 
         data = stream.read(2048, exception_on_overflow=False)
@@ -293,7 +296,7 @@ def assistant_loop(ui):
                 ui.last_english = english
 
                 ui.show_translation(english)
-                speak_text(english, "en")
+                speak_text_en(english)
 
             elif LANG_MODE == "EN_TO_HI" and en_rec.AcceptWaveform(data):
 
@@ -309,7 +312,7 @@ def assistant_loop(ui):
                 ui.last_english = hindi_text
 
                 ui.show_translation(hindi_text)
-                speak_text(hindi_text, "hi")
+                speak_text_en(hindi_text)
 
 # ================= GUI =================
 class ModernTranslatorUI:
@@ -367,23 +370,16 @@ class ModernTranslatorUI:
                   command=self.swap_languages).pack(side="left", padx=10)
 
         self.mode_btn = tk.Button(btn_frame,text="🌐 Online",
-                  font=("Segoe UI",12,"bold"),
-                  bg="#222222",fg="white",
-                  relief="flat",
-                  command=self.toggle_mode)
-
+                                 font=("Segoe UI",12,"bold"),
+                                 bg="#222222",fg="white",
+                                 relief="flat",
+                                 command=self.toggle_mode)
         self.mode_btn.pack(side="left", padx=10)
 
     def toggle_mode(self):
         global MODE
-        if MODE == "OFFLINE":
-            MODE = "ONLINE"
-            self.english_label.config(text="Mode: ONLINE")
-            self.mode_btn.config(text="📴 Offline")
-        else:
-            MODE = "OFFLINE"
-            self.english_label.config(text="Mode: OFFLINE")
-            self.mode_btn.config(text="🌐 Online")
+        MODE = "ONLINE" if MODE=="OFFLINE" else "OFFLINE"
+        self.mode_btn.config(text="📴 Offline" if MODE=="ONLINE" else "🌐 Online")
 
     def swap_languages(self):
         global LANG_MODE
@@ -419,7 +415,7 @@ class ModernTranslatorUI:
         if self.last_english:
             simplified = simplify_text(self.last_english)
             self.english_label.config(text=simplified)
-            speak_text(simplified, "en")
+            speak_text_en(simplified)
 
     def set_idle_mode(self):
         self.light_canvas.itemconfig(self.light, fill="gray")
