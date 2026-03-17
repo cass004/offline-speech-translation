@@ -349,34 +349,44 @@ class ModernTranslatorUI:
         btn_frame = tk.Frame(self.root, bg="#000000")
         btn_frame.pack(pady=(0,40))
 
+        # ===== Simplify =====
         tk.Button(btn_frame,text="✨ Simplify",
                   font=("Segoe UI",12,"bold"),
                   bg="#222222",fg="white",
                   relief="flat",
                   command=self.simplify).pack(side="left", padx=10)
 
+        # ===== Swap =====
         tk.Button(btn_frame,text="🔄 Swap",
                   font=("Segoe UI",12,"bold"),
                   bg="#222222",fg="white",
                   relief="flat",
                   command=self.swap_languages).pack(side="left", padx=10)
 
-        # ===== ONLINE BUTTON (NEW) =====
-        tk.Button(btn_frame,text="🌐 Online",
+        # ===== Online/Offline Toggle Button =====
+        self.mode_btn = tk.Button(btn_frame,
+                  text="🌐 Online",   # default since MODE = OFFLINE
                   font=("Segoe UI",12,"bold"),
                   bg="#222222",fg="white",
                   relief="flat",
-                  command=self.toggle_mode).pack(side="left", padx=10)
+                  command=self.toggle_mode)
 
+        self.mode_btn.pack(side="left", padx=10)
+
+    # ================= MODE TOGGLE =================
     def toggle_mode(self):
         global MODE
+
         if MODE == "OFFLINE":
             MODE = "ONLINE"
             self.english_label.config(text="Mode: ONLINE")
+            self.mode_btn.config(text="📴 Offline")  # show opposite
         else:
             MODE = "OFFLINE"
             self.english_label.config(text="Mode: OFFLINE")
+            self.mode_btn.config(text="🌐 Online")  # show opposite
 
+    # ================= LANGUAGE SWAP =================
     def swap_languages(self):
         global LANG_MODE
         if LANG_MODE == "HI_TO_EN":
@@ -386,6 +396,7 @@ class ModernTranslatorUI:
             LANG_MODE = "HI_TO_EN"
             self.english_label.config(text="Mode: Hindi → English")
 
+    # ================= UI STATES =================
     def show_waiting(self):
         self.hindi_label.config(text="")
         self.english_label.config(text="Waiting for wake word...")
@@ -407,18 +418,19 @@ class ModernTranslatorUI:
         self.hindi_label.config(text="")
         self.english_label.config(text="❌ No Internet Connection")
 
+    # ================= SIMPLIFY =================
     def simplify(self):
         if self.last_english:
             simplified = simplify_text(self.last_english)
             self.english_label.config(text=simplified)
             speak_text_en(simplified)
 
+    # ================= LIGHT =================
     def set_idle_mode(self):
         self.light_canvas.itemconfig(self.light, fill="gray")
 
     def set_listening_mode(self):
         self.light_canvas.itemconfig(self.light, fill="#00FF00")
-
 # ================= START =================
 if __name__ == "__main__":
     root = tk.Tk()
