@@ -160,7 +160,6 @@ else:
     PIPER_CONFIG = PIPER_MODEL + ".json"
 
 def speak_text_en(text):
-
     if not text.strip():
         return
 
@@ -232,19 +231,19 @@ def assistant_loop(ui):
 
         data = stream.read(2048, exception_on_overflow=False)
 
-        # ===== PARTIAL STOP DETECTION (ADDED FIX) =====
-        if LANG_MODE == "HI_TO_EN":
-            partial = json.loads(hindi_rec.PartialResult()).get("partial","")
-        else:
-            partial = json.loads(english_rec.PartialResult()).get("partial","")
+        # FIXED STOP DETECTION
+        partial_hi = json.loads(hindi_rec.PartialResult()).get("partial","")
+        partial_en = json.loads(english_rec.PartialResult()).get("partial","")
 
-        if "stop" in partial or "pause" in partial:
+        if any(cmd in partial_hi for cmd in ["stop","pause"]) or \
+           any(cmd in partial_en for cmd in ["stop","pause"]):
+
             stream.close()
             ui.show_waiting()
             ui.set_idle_mode()
+
             assistant_loop(ui)
             return
-        # =============================================
 
         if (LANG_MODE == "HI_TO_EN" and hindi_rec.AcceptWaveform(data)) or \
            (LANG_MODE == "EN_TO_HI" and english_rec.AcceptWaveform(data)):
