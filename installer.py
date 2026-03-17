@@ -64,4 +64,31 @@ else:
     os.remove(zip_path)
     print("✅ Vosk hindi model installed successfully")
 
+# ==================================================
+# STEP 8: Download Vosk Spanish Speech Recognition Model
+# ==================================================
+
+print("\n🔊 Checking Vosk spanish speech recognition model...")
+
+VOSK_ES_MODEL_NAME = "vosk-model-small-es-0.42"
+VOSK_ES_MODEL_ZIP = VOSK_ES_MODEL_NAME + ".zip"
+VOSK_ES_MODEL_URL = f"https://alphacephei.com/vosk/models/{VOSK_ES_MODEL_ZIP}"
+
+VOSK_ES_MODEL_DIR = os.path.join(BASE_DIR, VOSK_ES_MODEL_NAME)
+
+if os.path.isdir(VOSK_ES_MODEL_DIR):
+    print("✅ Vosk spanish model already installed")
+else:
+    print("⬇ Downloading Vosk spanish model...")
+    zip_path = os.path.join(BASE_DIR, VOSK_ES_MODEL_ZIP)
+
+    urllib.request.urlretrieve(VOSK_ES_MODEL_URL, zip_path)
+
+    print("📦 Extracting Vosk spanish model...")
+    with zipfile.ZipFile(zip_path, "r") as zip_ref:
+        zip_ref.extractall(BASE_DIR)
+
+    os.remove(zip_path)
+    print("✅ Vosk spanish model installed successfully")
+
 
