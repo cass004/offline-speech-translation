@@ -3,7 +3,7 @@
 # Wake Once → Continuous Listening
 # Landscape 480x320
 # Only Piper Fix + Bottom Spacing
-# + Swap Button + Stop Command (FIXED PROPERLY)
+# + Swap Button + Stop Command
 # ============================================================
 
 import os
@@ -143,7 +143,7 @@ def speak_text_en(text):
         winsound.PlaySound(tmp_wav, winsound.SND_FILENAME)
         os.remove(tmp_wav)
 
-# ================= ASSISTANT LOOP =================
+# ================= ASSISTANT LOOP (ONLY UPDATED) =================
 def assistant_loop(ui):
 
     en_model = Model(EN_MODEL_PATH)
@@ -161,31 +161,32 @@ def assistant_loop(ui):
     hi_rec = KaldiRecognizer(hi_model,16000)
 
     listening_mode = False
+
     ui.show_waiting()
 
     while True:
 
         data = stream.read(2048, exception_on_overflow=False)
 
-        # 🔹 ALWAYS LISTEN FOR COMMANDS
+        # ===== ALWAYS LISTEN FOR COMMANDS =====
         if en_rec.AcceptWaveform(data):
-            text = json.loads(en_rec.Result()).get("text","").lower()
+            cmd_text = json.loads(en_rec.Result()).get("text","").lower()
 
-            if not listening_mode and "hello" in text:
+            if not listening_mode and "hello" in cmd_text:
                 listening_mode = True
                 en_rec.Reset()
                 hi_rec.Reset()
                 ui.set_listening_mode()
                 ui.show_listening()
 
-            elif listening_mode and any(cmd in text for cmd in ["stop","pause"]):
+            elif listening_mode and any(cmd in cmd_text for cmd in ["stop","pause"]):
                 listening_mode = False
                 en_rec.Reset()
                 hi_rec.Reset()
                 ui.show_waiting()
                 ui.set_idle_mode()
 
-        # 🔹 PROCESS SPEECH ONLY WHEN ACTIVE
+        # ===== PROCESS SPEECH ONLY WHEN ACTIVE =====
         if listening_mode:
 
             if LANG_MODE == "HI_TO_EN" and hi_rec.AcceptWaveform(data):
@@ -221,8 +222,9 @@ def assistant_loop(ui):
                 ui.show_translation(hindi_text)
                 speak_text_en(spoken_en)
 
-# ================= GUI (UNCHANGED) =================
+# ================= GUI =================
 class ModernTranslatorUI:
+
     def __init__(self, root):
         self.root = root
         self.root.title("AI Speech Translator")
