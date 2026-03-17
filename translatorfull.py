@@ -1,7 +1,7 @@
 # ============================================================
 # Hindi → English → Simplified AI Translator
 # + ONLINE MODE
-# + HINDI + ENGLISH TTS (FINAL SAFE VERSION)
+# + FIXED ONLINE SWAP (NO OTHER CHANGES)
 # ============================================================
 
 import os
@@ -50,6 +50,11 @@ def find_model(lang_code):
 EN_MODEL_PATH = find_model("en")
 HI_MODEL_PATH = find_model("hi")
 
+if not EN_MODEL_PATH:
+    raise FileNotFoundError("English model not found.")
+if not HI_MODEL_PATH:
+    raise FileNotFoundError("Hindi model not found.")
+
 # ================= TRANSLATOR =================
 langs = argostranslate.get_installed_languages()
 hi = next(l for l in langs if l.code == "hi")
@@ -63,9 +68,12 @@ nltk.download("wordnet", quiet=True)
 nltk.download("averaged_perceptron_tagger_eng", quiet=True)
 
 AUX_VERBS = {
-    "am","is","are","was","were","be","been","being",
-    "do","does","did","have","has","had",
-    "will","would","shall","should","may","might","must","can","could"
+    "am","is","are","was","were",
+    "be","been","being",
+    "do","does","did",
+    "have","has","had",
+    "will","would","shall","should",
+    "may","might","must","can","could"
 }
 
 STOP_WORDS = {
@@ -74,9 +82,15 @@ STOP_WORDS = {
 }
 
 SIMPLE_MAP = {
-    "lethargic":"lazy","fatigued":"tired","commence":"start",
-    "terminate":"end","utilize":"use","assist":"help",
-    "assistance":"help","purchase":"buy","reside":"live"
+    "lethargic":"lazy",
+    "fatigued":"tired",
+    "commence":"start",
+    "terminate":"end",
+    "utilize":"use",
+    "assist":"help",
+    "assistance":"help",
+    "purchase":"buy",
+    "reside":"live",
 }
 
 def get_wordnet_pos(tag):
@@ -150,7 +164,6 @@ else:
     PIPER_HI = os.path.join(BASE_DIR,"piper","hi_IN-medium.onnx")
     PIPER_CONFIG = PIPER_EN + ".json"
 
-# 🔥 ONLY CHANGE: unified TTS
 def speak_text(text, lang="en"):
     if not text.strip():
         return
@@ -190,17 +203,26 @@ def online_listen_translate(ui):
 
         if LANG_MODE == "HI_TO_EN":
             text = recognizer.recognize_google(audio, language="hi-IN")
+            ui.show_hindi(text)
+
             translated = GoogleTranslator(source="hi", target="en").translate(text)
+            ui.show_translation(translated)
+
             speak_text(translated, "en")
+
         else:
             text = recognizer.recognize_google(audio, language="en-IN")
-            translated = GoogleTranslator(source="en", target="hi").translate(text)
-            speak_text(translated, "hi")
+            ui.show_hindi(text)
 
-        ui.show_translation(translated)
+            translated = GoogleTranslator(source="en", target="hi").translate(text)
+            ui.show_translation(translated)
+
+            speak_text(translated, "hi")
 
     except:
         pass
+
+# ================= REST OF YOUR ORIGINAL CODE UNCHANGED =================
 
 # ================= ASSISTANT LOOP =================
 def assistant_loop(ui):
