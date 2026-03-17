@@ -181,44 +181,50 @@ def online_process(ui, recognizer, listening_mode):
         with sr.Microphone() as source:
             audio = recognizer.listen(source, phrase_time_limit=3)
 
+        # ===== STEP 1: ALWAYS CHECK COMMAND =====
         try:
             cmd = recognizer.recognize_google(audio, language="en-IN").lower()
         except:
             cmd = ""
 
+        # ===== WAKE WORD =====
         if not listening_mode and "hello" in cmd:
             ui.set_listening_mode()
             ui.show_listening()
             return True
 
-        elif listening_mode and any(c in cmd for c in ["stop","pause"]):
+        # ===== STOP WORD (FIXED) =====
+        if listening_mode and any(c in cmd for c in ["stop", "pause", "exit", "quit"]):
             ui.set_idle_mode()
             ui.show_waiting()
             return False
 
-        if listening_mode:
+        # ===== IF NOT COMMAND → PROCESS =====
+        if not listening_mode:
+            return listening_mode
 
-            if LANG_MODE == "HI_TO_EN":
-                text = recognizer.recognize_google(audio, language="hi-IN")
-                ui.show_hindi(text)
+        # ===== NORMAL TRANSLATION =====
+        if LANG_MODE == "HI_TO_EN":
+            text = recognizer.recognize_google(audio, language="hi-IN")
+            ui.show_hindi(text)
 
-                translated = GoogleTranslator(source="hi", target="en").translate(text)
-                ui.last_hindi = text
-                ui.last_english = translated
+            translated = GoogleTranslator(source="hi", target="en").translate(text)
+            ui.last_hindi = text
+            ui.last_english = translated
 
-                ui.show_translation(translated)
-                speak_text_en(translated)
+            ui.show_translation(translated)
+            speak_text_en(translated)
 
-            else:
-                text = recognizer.recognize_google(audio, language="en-IN")
-                ui.show_hindi(text)
+        else:
+            text = recognizer.recognize_google(audio, language="en-IN")
+            ui.show_hindi(text)
 
-                translated = GoogleTranslator(source="en", target="hi").translate(text)
-                ui.last_hindi = text
-                ui.last_english = translated
+            translated = GoogleTranslator(source="en", target="hi").translate(text)
+            ui.last_hindi = text
+            ui.last_english = translated
 
-                ui.show_translation(translated)
-                speak_text_en(translated)
+            ui.show_translation(translated)
+            speak_text_en(translated)
 
     except:
         pass
