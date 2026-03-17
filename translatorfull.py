@@ -24,15 +24,12 @@ from wordfreq import zipf_frequency
 from difflib import get_close_matches
 
 # ================= LANGUAGE MODE =================
-
 LANG_MODE = "HI_TO_EN"
 
 # ================= BASE PATH =================
-
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # ================= AUTO MODEL DETECT =================
-
 def find_model(lang_code):
     for name in os.listdir(BASE_DIR):
         lower = name.lower()
@@ -49,7 +46,6 @@ if not HI_MODEL_PATH:
     raise FileNotFoundError("Hindi model not found.")
 
 # ================= TRANSLATOR =================
-
 langs = argostranslate.get_installed_languages()
 hi = next(l for l in langs if l.code == "hi")
 en = next(l for l in langs if l.code == "en")
@@ -58,7 +54,6 @@ translator_hi_en = hi.get_translation(en)
 translator_en_hi = en.get_translation(hi)
 
 # ================= NLP SIMPLIFIER =================
-
 nltk.download("wordnet", quiet=True)
 nltk.download("averaged_perceptron_tagger_eng", quiet=True)
 
@@ -134,7 +129,6 @@ def simplify_text(text):
     return " ".join(output)
 
 # ================= INTELLIGENT CORRECTION =================
-
 def intelligent_correction(hindi_text, english_text):
     eng = english_text.lower().strip()
     if "कैसे हो" in hindi_text or "कैसे हैं" in hindi_text:
@@ -150,7 +144,6 @@ def intelligent_correction(hindi_text, english_text):
     return eng
 
 # ================= PIPER =================
-
 if platform.system() == "Windows":
     PIPER_BIN = os.path.join(BASE_DIR,"piper_windows_amd64","piper","piper.exe")
     PIPER_MODEL = os.path.join(BASE_DIR,"piper_windows_amd64","piper","en_US-lessac-medium.onnx")
@@ -188,10 +181,8 @@ def speak_text_en(text):
             os.remove(tmp_wav)
 
 # ================= ASSISTANT LOOP =================
-
 def assistant_loop(ui):
 
-    wake_model = Model(EN_MODEL_PATH)
     hindi_model = Model(HI_MODEL_PATH)
     english_model = Model(EN_MODEL_PATH)
 
@@ -199,66 +190,49 @@ def assistant_loop(ui):
 
     ui.show_waiting()
 
-    wake_stream = p.open(format=pyaudio.paInt16,
-                         channels=1,
-                         rate=16000,
-                         input=True,
-                         frames_per_buffer=2048)
-
-    wake_rec = KaldiRecognizer(wake_model,16000)
-
-    while True:
-        data = wake_stream.read(2048, exception_on_overflow=False)
-        if wake_rec.AcceptWaveform(data):
-            if "hello" in json.loads(wake_rec.Result()).get("text",""):
-                break
-
-    wake_stream.close()
-
-    ui.set_listening_mode()
-    ui.show_listening()
-
     stream = p.open(format=pyaudio.paInt16,
                     channels=1,
                     rate=16000,
                     input=True,
                     frames_per_buffer=2048)
 
-    hindi_rec = KaldiRecognizer(hindi_model,16000)
-    english_rec = KaldiRecognizer(english_model,16000)
+    en_rec = KaldiRecognizer(english_model,16000)
+    hi_rec = KaldiRecognizer(hindi_model,16000)
+
+    listening_mode = False
 
     while True:
 
         data = stream.read(2048, exception_on_overflow=False)
 
-        # FIXED STOP DETECTION
-        partial_hi = json.loads(hindi_rec.PartialResult()).get("partial","")
-        partial_en = json.loads(english_rec.PartialResult()).get("partial","")
+        # ===== NEW STOP METHOD =====
+        if en_rec.AcceptWaveform(data):
+            cmd = json.loads(en_rec.Result()).get("text","").lower()
 
-        if any(cmd in partial_hi for cmd in ["stop","pause"]) or \
-           any(cmd in partial_en for cmd in ["stop","pause"]):
+            if not listening_mode and "hello" in cmd:
+                listening_mode = True
+                en_rec.Reset()
+                hi_rec.Reset()
+                ui.set_listening_mode()
+                ui.show_listening()
 
-            stream.close()
-            ui.show_waiting()
-            ui.set_idle_mode()
+            elif listening_mode and any(c in cmd for c in ["stop","pause"]):
+                listening_mode = False
+                en_rec.Reset()
+                hi_rec.Reset()
+                ui.show_waiting()
+                ui.set_idle_mode()
+        # ===========================
 
-            assistant_loop(ui)
-            return
+        if listening_mode:
 
-        if (LANG_MODE == "HI_TO_EN" and hindi_rec.AcceptWaveform(data)) or \
-           (LANG_MODE == "EN_TO_HI" and english_rec.AcceptWaveform(data)):
+            if LANG_MODE == "HI_TO_EN" and hi_rec.AcceptWaveform(data):
 
-            if LANG_MODE == "HI_TO_EN":
-                spoken_text = json.loads(hindi_rec.Result()).get("text","")
-            else:
-                spoken_text = json.loads(english_rec.Result()).get("text","")
+                spoken_text = json.loads(hi_rec.Result()).get("text","")
+                if not spoken_text:
+                    continue
 
-            if not spoken_text:
-                continue
-
-            ui.show_hindi(spoken_text)
-
-            if LANG_MODE == "HI_TO_EN":
+                ui.show_hindi(spoken_text)
 
                 english_raw = translator_hi_en.translate(spoken_text)
                 english = intelligent_correction(spoken_text, english_raw)
@@ -269,7 +243,13 @@ def assistant_loop(ui):
                 ui.show_translation(english)
                 speak_text_en(english)
 
-            else:
+            elif LANG_MODE == "EN_TO_HI" and en_rec.AcceptWaveform(data):
+
+                spoken_text = json.loads(en_rec.Result()).get("text","")
+                if not spoken_text:
+                    continue
+
+                ui.show_hindi(spoken_text)
 
                 hindi_text = translator_en_hi.translate(spoken_text)
 
@@ -280,7 +260,6 @@ def assistant_loop(ui):
                 speak_text_en(hindi_text)
 
 # ================= GUI =================
-
 class ModernTranslatorUI:
 
     def __init__(self, root):
@@ -295,11 +274,7 @@ class ModernTranslatorUI:
 
         self.build_ui()
 
-        threading.Thread(
-            target=assistant_loop,
-            args=(self,),
-            daemon=True
-        ).start()
+        threading.Thread(target=assistant_loop,args=(self,),daemon=True).start()
 
     def build_ui(self):
 
@@ -340,9 +315,7 @@ class ModernTranslatorUI:
                   command=self.swap_languages).pack(side="left", padx=10)
 
     def swap_languages(self):
-
         global LANG_MODE
-
         if LANG_MODE == "HI_TO_EN":
             LANG_MODE = "EN_TO_HI"
             self.english_label.config(text="Mode: English → Hindi")
@@ -363,9 +336,9 @@ class ModernTranslatorUI:
         self.hindi_label.config(text="")
         self.english_label.config(text=text)
 
-    def show_translation(self, english_text):
+    def show_translation(self, text):
         self.hindi_label.config(text=self.last_hindi)
-        self.english_label.config(text=english_text)
+        self.english_label.config(text=text)
 
     def simplify(self):
         if self.last_english:
@@ -380,7 +353,6 @@ class ModernTranslatorUI:
         self.light_canvas.itemconfig(self.light, fill="#00FF00")
 
 # ================= START =================
-
 if __name__ == "__main__":
     root = tk.Tk()
     app = ModernTranslatorUI(root)
