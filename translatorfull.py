@@ -27,6 +27,7 @@ from difflib import get_close_matches
 MODE = "OFFLINE"
 
 # ================= LANGUAGE MODE =================
+LANG_PAIR= "HI_EN"
 LANG_MODE = "HI_TO_EN"
 
 # ================= NETWORK =================
@@ -50,19 +51,25 @@ def find_model(lang_code):
 
 EN_MODEL_PATH = find_model("en")
 HI_MODEL_PATH = find_model("hi")
+ES_MODEL_PATH = find_model("es")
 
 if not EN_MODEL_PATH:
     raise FileNotFoundError("English model not found.")
 if not HI_MODEL_PATH:
     raise FileNotFoundError("Hindi model not found.")
+if not ES_MODEL_PATH:
+    raise FileNotFoundError("Spanish model not found.")
 
 # ================= TRANSLATOR =================
 langs = argostranslate.get_installed_languages()
 hi = next(l for l in langs if l.code == "hi")
 en = next(l for l in langs if l.code == "en")
+es = next(l for l in langs if l.code == "es")
 
 translator_hi_en = hi.get_translation(en)
 translator_en_hi = en.get_translation(hi)
+translator_es_en = es.get_translation(en)
+translator_en_es = en.get_translation(es)
 
 # ================= NLP SIMPLIFIER =================
 nltk.download("wordnet", quiet=True)
@@ -204,27 +211,36 @@ def online_process(ui, recognizer, listening_mode):
             return listening_mode
 
         # ===== NORMAL TRANSLATION =====
-        if LANG_MODE == "HI_TO_EN":
-            text = recognizer.recognize_google(audio, language="hi-IN")
-            ui.show_hindi(text)
+    # ===== NORMAL TRANSLATION =====
+ if LANG_MODE == "HI_TO_EN":
+    text = recognizer.recognize_google(audio, language="hi-IN")
+    ui.show_hindi(text)
 
-            translated = GoogleTranslator(source="hi", target="en").translate(text)
-            ui.last_hindi = text
-            ui.last_english = translated
+    translated = GoogleTranslator(source="hi", target="en").translate(text)
 
-            ui.show_translation(translated)
-            speak_text_en(translated)
+ elif LANG_MODE == "EN_TO_HI":
+    text = recognizer.recognize_google(audio, language="en-IN")
+    ui.show_hindi(text)
 
-        else:
-            text = recognizer.recognize_google(audio, language="en-IN")
-            ui.show_hindi(text)
+    translated = GoogleTranslator(source="en", target="hi").translate(text)
 
-            translated = GoogleTranslator(source="en", target="hi").translate(text)
-            ui.last_hindi = text
-            ui.last_english = translated
+ elif LANG_MODE == "ES_TO_EN":
+    text = recognizer.recognize_google(audio, language="es-ES")
+    ui.show_hindi(text)
 
-            ui.show_translation(translated)
-            speak_text_en(translated)
+    translated = GoogleTranslator(source="es", target="en").translate(text)
+
+ elif LANG_MODE == "EN_TO_ES":
+    text = recognizer.recognize_google(audio, language="en-IN")
+    ui.show_hindi(text)
+
+    translated = GoogleTranslator(source="en", target="es").translate(text)
+
+ ui.last_hindi = text
+ ui.last_english = translated
+
+ ui.show_translation(translated)
+ speak_text_en(translated)
 
     except:
         pass
@@ -236,6 +252,7 @@ def assistant_loop(ui):
 
     hindi_model = Model(HI_MODEL_PATH)
     english_model = Model(EN_MODEL_PATH)
+    spanish_model = Model(ES_MODEL_PATH) 
 
     p = pyaudio.PyAudio()
 
@@ -250,6 +267,7 @@ def assistant_loop(ui):
     en_cmd_rec = KaldiRecognizer(english_model,16000)
     en_rec = KaldiRecognizer(english_model,16000)
     hi_rec = KaldiRecognizer(hindi_model,16000)
+    es_rec = KaldiRecognizer(spanish_model,16000) 
 
     recognizer_online = sr.Recognizer()
     listening_mode = False
@@ -319,6 +337,40 @@ def assistant_loop(ui):
 
                 ui.show_translation(hindi_text)
                 speak_text_en(hindi_text)
+            # -------- SPANISH → ENGLISH --------
+            elif LANG_MODE == "ES_TO_EN" and es_rec.AcceptWaveform(data):
+
+                    spoken_text = json.loads(es_rec.Result()).get("text","")
+                    if not spoken_text:
+                         continue
+
+                    ui.show_hindi(spoken_text)
+
+                    english = translator_es_en.translate(spoken_text)
+
+                    ui.last_hindi = spoken_text
+                    ui.last_english = english
+
+                    ui.show_translation(english)
+                    speak_text_en(english)
+
+# -------- ENGLISH → SPANISH --------
+           elif LANG_MODE == "EN_TO_ES" and en_rec.AcceptWaveform(data):
+
+               spoken_text = json.loads(en_rec.Result()).get("text","")
+               if not spoken_text:
+                  continue
+
+               ui.show_hindi(spoken_text)
+
+              spanish = translator_en_es.translate(spoken_text)
+
+              ui.last_hindi = spoken_text
+              ui.last_english = spanish
+
+              ui.show_translation(spanish)
+              speak_text_en(spanish)
+            
 
 # ================= GUI =================
 class ModernTranslatorUI:
@@ -381,20 +433,49 @@ class ModernTranslatorUI:
                                  relief="flat",
                                  command=self.toggle_mode)
         self.mode_btn.pack(side="left", padx=10)
+        tk.Button(btn_frame,text="🌍 Lang",
+          font=("Segoe UI",12,"bold"),
+          bg="#222222",fg="white",
+          relief="flat",
+          command=self.toggle_language_pair).pack(side="left", padx=10)
+
+    
 
     def toggle_mode(self):
         global MODE
         MODE = "ONLINE" if MODE=="OFFLINE" else "OFFLINE"
         self.mode_btn.config(text="📴 Offline" if MODE=="ONLINE" else "🌐 Online")
-
+        
     def swap_languages(self):
-        global LANG_MODE
-        if LANG_MODE == "HI_TO_EN":
+        global LANG_MODE, LANG_PAIR
+
+        if LANG_PAIR == "HI_EN":
+         if LANG_MODE == "HI_TO_EN":
             LANG_MODE = "EN_TO_HI"
             self.english_label.config(text="Mode: English → Hindi")
-        else:
+         else:
             LANG_MODE = "HI_TO_EN"
             self.english_label.config(text="Mode: Hindi → English")
+
+        elif LANG_PAIR == "ES_EN":
+         if LANG_MODE == "ES_TO_EN":
+            LANG_MODE = "EN_TO_ES"
+            self.english_label.config(text="Mode: English → Spanish")
+         else:
+            LANG_MODE = "ES_TO_EN"
+            self.english_label.config(text="Mode: Spanish → English")
+
+    def toggle_language_pair(self):
+       global LANG_PAIR, LANG_MODE
+
+       if LANG_PAIR == "HI_EN":
+        LANG_PAIR = "ES_EN"
+        LANG_MODE = "ES_TO_EN"
+        self.english_label.config(text="Mode: Spanish → English")
+       else:
+        LANG_PAIR = "HI_EN"
+        LANG_MODE = "HI_TO_EN"
+        self.english_label.config(text="Mode: Hindi → English")
 
     def show_waiting(self):
         self.hindi_label.config(text="")
