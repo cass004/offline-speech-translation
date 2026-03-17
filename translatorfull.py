@@ -57,16 +57,31 @@ translator_en_hi = en.get_translation(hi)
 nltk.download("wordnet", quiet=True)
 nltk.download("averaged_perceptron_tagger_eng", quiet=True)
 
-AUX_VERBS = {"am","is","are","was","were","be","been","being",
-             "do","does","did","have","has","had",
-             "will","would","shall","should","may","might","must","can","could"}
+AUX_VERBS = {
+    "am","is","are","was","were",
+    "be","been","being",
+    "do","does","did",
+    "have","has","had",
+    "will","would","shall","should",
+    "may","might","must","can","could"
+}
 
-STOP_WORDS = {"the","a","an","in","on","at","of","to","for","from",
-              "and","or","but","if","then","this","that","these","those"}
+STOP_WORDS = {
+    "the","a","an","in","on","at","of","to","for","from",
+    "and","or","but","if","then","this","that","these","those"
+}
 
-SIMPLE_MAP = {"lethargic":"lazy","fatigued":"tired","commence":"start",
-              "terminate":"end","utilize":"use","assist":"help",
-              "assistance":"help","purchase":"buy","reside":"live"}
+SIMPLE_MAP = {
+    "lethargic":"lazy",
+    "fatigued":"tired",
+    "commence":"start",
+    "terminate":"end",
+    "utilize":"use",
+    "assist":"help",
+    "assistance":"help",
+    "purchase":"buy",
+    "reside":"live",
+}
 
 def get_wordnet_pos(tag):
     if tag.startswith("J"): return wn.ADJ
@@ -91,9 +106,9 @@ def get_simpler_word(word, pos=None):
     candidates = set()
     for syn in synsets:
         for lemma in syn.lemmas():
-            candidates.add(lemma.name().replace("_"," "))
-    best = max(candidates, key=lambda w: zipf_frequency(w,"en"))
-    return best if zipf_frequency(best,"en") > zipf_frequency(word,"en") else word
+            candidates.add(lemma.name().replace("_", " "))
+    best = max(candidates, key=lambda w: zipf_frequency(w, "en"))
+    return best if zipf_frequency(best, "en") > zipf_frequency(word, "en") else word
 
 def simplify_text(text):
     tokens = text.split()
@@ -132,18 +147,38 @@ def intelligent_correction(hindi_text, english_text):
 if platform.system() == "Windows":
     PIPER_BIN = os.path.join(BASE_DIR,"piper_windows_amd64","piper","piper.exe")
     PIPER_MODEL = os.path.join(BASE_DIR,"piper_windows_amd64","piper","en_US-lessac-medium.onnx")
+else:
+    PIPER_BIN = os.path.join(BASE_DIR,"piper","piper")
+    PIPER_MODEL = os.path.join(BASE_DIR,"piper","en_US-lessac-medium.onnx")
+    PIPER_CONFIG = PIPER_MODEL + ".json"
 
 def speak_text_en(text):
     if not text.strip():
         return
+
     tmp_wav = tempfile.mktemp(".wav")
-    subprocess.run([PIPER_BIN,"--model",PIPER_MODEL,"--output_file",tmp_wav],
-                   input=text.encode("utf-8"),
-                   stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-    if os.path.exists(tmp_wav):
-        import winsound
-        winsound.PlaySound(tmp_wav, winsound.SND_FILENAME)
-        os.remove(tmp_wav)
+
+    if platform.system() == "Windows":
+        subprocess.run(
+            [PIPER_BIN,"--model",PIPER_MODEL,"--output_file",tmp_wav],
+            input=text.encode("utf-8"),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+        if os.path.exists(tmp_wav):
+            import winsound
+            winsound.PlaySound(tmp_wav, winsound.SND_FILENAME)
+            os.remove(tmp_wav)
+    else:
+        subprocess.run(
+            [PIPER_BIN,"-m",PIPER_MODEL,"-c",PIPER_CONFIG,"-f",tmp_wav],
+            input=text.encode("utf-8"),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+        if os.path.exists(tmp_wav):
+            subprocess.run(["aplay",tmp_wav])
+            os.remove(tmp_wav)
 
 # ================= ASSISTANT LOOP =================
 def assistant_loop(ui):
@@ -161,7 +196,7 @@ def assistant_loop(ui):
                     input=True,
                     frames_per_buffer=2048)
 
-    # 🔹 SEPARATE RECOGNIZERS (FIX)
+    # ✅ ONLY CHANGE: separate command recognizer
     en_cmd_rec = KaldiRecognizer(english_model,16000)
     en_rec = KaldiRecognizer(english_model,16000)
     hi_rec = KaldiRecognizer(hindi_model,16000)
@@ -172,7 +207,7 @@ def assistant_loop(ui):
 
         data = stream.read(2048, exception_on_overflow=False)
 
-        # ===== COMMAND DETECTION =====
+        # ===== NEW STOP METHOD =====
         if en_cmd_rec.AcceptWaveform(data):
             cmd = json.loads(en_cmd_rec.Result()).get("text","").lower()
 
@@ -191,8 +226,8 @@ def assistant_loop(ui):
                 hi_rec.Reset()
                 ui.show_waiting()
                 ui.set_idle_mode()
+        # ===========================
 
-        # ===== TRANSLATION =====
         if listening_mode:
 
             if LANG_MODE == "HI_TO_EN" and hi_rec.AcceptWaveform(data):
