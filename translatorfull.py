@@ -257,11 +257,20 @@ def online_process(ui, recognizer, listening_mode):
             ui.show_hindi(text)
             translated = GoogleTranslator(source="en", target="es").translate(text)
 
+        global t_start, t_text
+
+        t_start = time.time()   # 🎯 START (speech captured)
+
         ui.last_hindi = text
         ui.last_english = translated
 
         ui.show_translation(translated)
-        speak_text_en(translated)
+
+        t_text = time.time()    # 📝 TEXT DISPLAYED
+
+        ui.show_latency(t_start, t_text, None)
+
+        speak_text_en(translated, ui)   # 🔊 audio handled inside
 
     except:
         pass
