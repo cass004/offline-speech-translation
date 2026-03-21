@@ -217,6 +217,8 @@ def online_process(ui, recognizer, listening_mode):
 
     try:
         with sr.Microphone() as source:
+            global t_start
+            t_start = time.time()
             audio = recognizer.listen(source, phrase_time_limit=3)
 
         try:
