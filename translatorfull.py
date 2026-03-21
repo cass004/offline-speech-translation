@@ -167,25 +167,50 @@ else:
     PIPER_MODEL = os.path.join(BASE_DIR,"piper","en_US-lessac-medium.onnx")
     PIPER_CONFIG = PIPER_MODEL + ".json"
 
-def speak_text_en(text):
+def speak_text_en(text, ui=None):
     if not text.strip():
         return
 
+    import time
+
     tmp_wav = tempfile.mktemp(".wav")
 
+    # ⏱ Generate audio (THIS TAKES TIME)
+    gen_start = time.time()
+
     if platform.system() == "Windows":
-        subprocess.run([PIPER_BIN,"--model",PIPER_MODEL,"--output_file",tmp_wav],
-            input=text.encode("utf-8"), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        if os.path.exists(tmp_wav):
+        subprocess.run(
+            [PIPER_BIN, "--model", PIPER_MODEL, "--output_file", tmp_wav],
+            input=text.encode("utf-8"),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+    else:
+        subprocess.run(
+            [PIPER_BIN, "-m", PIPER_MODEL, "-c", PIPER_CONFIG, "-f", tmp_wav],
+            input=text.encode("utf-8"),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+
+    gen_end = time.time()
+
+    if os.path.exists(tmp_wav):
+
+        play_start = time.time()   # 🎯 REAL AUDIO START
+
+        if platform.system() == "Windows":
             import winsound
             winsound.PlaySound(tmp_wav, winsound.SND_FILENAME)
-            os.remove(tmp_wav)
-    else:
-        subprocess.run([PIPER_BIN,"-m",PIPER_MODEL,"-c",PIPER_CONFIG,"-f",tmp_wav],
-            input=text.encode("utf-8"), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        if os.path.exists(tmp_wav):
-            subprocess.run(["aplay",tmp_wav])
-            os.remove(tmp_wav)
+        else:
+            subprocess.run(["aplay", tmp_wav])
+
+        play_end = time.time()
+
+        if ui:
+            ui.update_audio_time(gen_end, play_start, play_end)
+
+        os.remove(tmp_wav)
 
 # ================= ONLINE PROCESS =================
 def online_process(ui, recognizer, listening_mode):
@@ -322,10 +347,8 @@ def assistant_loop(ui):
                 t_text = time.time()
                 ui.show_latency(t_start, t_text, None)
                 
-                global t_audio
-                t_audio = time.time()
-                ui.show_latency(t_start, t_text, t_audio)
-                speak_text_en(english)
+               
+                speak_text_en(english, ui)
                 
 
             elif LANG_MODE == "EN_TO_HI" and en_rec.AcceptWaveform(data):
@@ -524,6 +547,22 @@ class ModernTranslatorUI:
         audio_latency = "..."
 
      latency_info = f"\n⏱ Text: {text_latency}s | Audio: {audio_latency}s"
+
+     base_text = self.last_english if self.last_english else ""
+     self.english_label.config(text=base_text + latency_info)
+    def update_audio_time(self, gen_end, play_start, play_end):
+     global t_start, t_text
+
+     text_latency = round(t_text - t_start, 2)
+     audio_latency = round(play_start - t_start, 2)
+     tts_delay = round(play_start - t_text, 2)
+     playback_time = round(play_end - play_start, 2)
+
+     latency_info = (
+         f"\n⏱ Text: {text_latency}s"
+         f" | Audio: {audio_latency}s"
+         f"\n⚙️ TTS: {tts_delay}s | 🔊 Play: {playback_time}s"
+     )
 
      base_text = self.last_english if self.last_english else ""
      self.english_label.config(text=base_text + latency_info)
