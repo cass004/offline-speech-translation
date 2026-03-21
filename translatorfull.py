@@ -36,6 +36,8 @@ MODE = "OFFLINE"
 LANG_PAIR = "HI_EN"
 LANG_MODE = "HI_TO_EN"
 
+
+
 # ================= NETWORK =================
 def is_connected():
     try:
@@ -44,6 +46,16 @@ def is_connected():
     except:
         return False
 
+
+def get_network_latency():
+    try:
+        import time, socket
+        start = time.time()
+        socket.create_connection(("8.8.8.8", 53), timeout=2)
+        latency = (time.time() - start) * 1000  # ms
+        return round(latency, 1)
+    except:
+        return None
 # ================= BASE PATH =================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -262,16 +274,24 @@ def online_process(ui, recognizer, listening_mode):
        
 
         ui.last_hindi = text
-        ui.last_english = translated
 
-        ui.show_translation(translated)
+        # 🌐 Get network latency
+        latency = get_network_latency()
+
+        if latency:
+          ui.last_english = f"{translated}\n🌐 Net: {latency} ms"
+        else:
+          ui.last_english = f"{translated}\n🌐 Net: N/A"
+
+        ui.show_translation(ui.last_english)
+
+        # ⏱ Latency tracking (keep your existing logic if added)
         global t_text
-
-        t_text = time.time()    # 📝 TEXT DISPLAYED
+        t_text = time.time()
 
         ui.show_latency(t_start, t_text, None)
 
-        speak_text_en(translated, ui)   # 🔊 audio handled inside
+        speak_text_en(translated, ui)
 
     except:
         pass
