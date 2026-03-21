@@ -23,6 +23,12 @@ from nltk import pos_tag
 from wordfreq import zipf_frequency
 from difflib import get_close_matches
 
+import time
+
+# Latency tracking
+t_start = 0
+t_text = 0
+t_audio = 0
 # ================= MODE =================
 MODE = "OFFLINE"
 
@@ -300,6 +306,8 @@ def assistant_loop(ui):
                 spoken_text = json.loads(hi_rec.Result()).get("text","")
                 if not spoken_text:
                     continue
+                global t_start
+                t_start = time.time()
 
                 ui.show_hindi(spoken_text)
 
@@ -310,7 +318,15 @@ def assistant_loop(ui):
                 ui.last_english = english
 
                 ui.show_translation(english)
+                global t_text
+                t_text = time.time()
+                ui.show_latency(t_start, t_text, None)
+                
+                global t_audio
+                t_audio = time.time()
+                ui.show_latency(t_start, t_text, t_audio)
                 speak_text_en(english)
+                
 
             elif LANG_MODE == "EN_TO_HI" and en_rec.AcceptWaveform(data):
 
@@ -496,6 +512,21 @@ class ModernTranslatorUI:
 
     def set_listening_mode(self):
         self.light_canvas.itemconfig(self.light, fill="#00FF00")
+    def show_latency(self, start, text_time, audio_time):
+     if start and text_time:
+        text_latency = round(text_time - start, 2)
+     else:
+        text_latency = 0
+
+     if start and audio_time:
+        audio_latency = round(audio_time - start, 2)
+     else:
+        audio_latency = "..."
+
+     latency_info = f"\n⏱ Text: {text_latency}s | Audio: {audio_latency}s"
+
+     current_text = self.english_label.cget("text")
+     self.english_label.config(text=current_text + latency_info)
 
 # ================= START =================
 if __name__ == "__main__":
