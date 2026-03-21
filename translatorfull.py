@@ -23,20 +23,12 @@ from nltk import pos_tag
 from wordfreq import zipf_frequency
 from difflib import get_close_matches
 
-import time
-
-# Latency tracking
-t_start = 0
-t_text = 0
-t_audio = 0
 # ================= MODE =================
 MODE = "OFFLINE"
 
 # ================= LANGUAGE MODE =================
 LANG_PAIR = "HI_EN"
 LANG_MODE = "HI_TO_EN"
-
-
 
 # ================= NETWORK =================
 def is_connected():
@@ -46,16 +38,6 @@ def is_connected():
     except:
         return False
 
-
-def get_network_latency():
-    try:
-        import time, socket
-        start = time.time()
-        socket.create_connection(("8.8.8.8", 53), timeout=2)
-        latency = (time.time() - start) * 1000  # ms
-        return round(latency, 1)
-    except:
-        return None
 # ================= BASE PATH =================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -179,50 +161,25 @@ else:
     PIPER_MODEL = os.path.join(BASE_DIR,"piper","en_US-lessac-medium.onnx")
     PIPER_CONFIG = PIPER_MODEL + ".json"
 
-def speak_text_en(text, ui=None):
+def speak_text_en(text):
     if not text.strip():
         return
 
-    import time
-
     tmp_wav = tempfile.mktemp(".wav")
 
-    # ⏱ Generate audio (THIS TAKES TIME)
-    gen_start = time.time()
-
     if platform.system() == "Windows":
-        subprocess.run(
-            [PIPER_BIN, "--model", PIPER_MODEL, "--output_file", tmp_wav],
-            input=text.encode("utf-8"),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
-        )
-    else:
-        subprocess.run(
-            [PIPER_BIN, "-m", PIPER_MODEL, "-c", PIPER_CONFIG, "-f", tmp_wav],
-            input=text.encode("utf-8"),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
-        )
-
-    gen_end = time.time()
-
-    if os.path.exists(tmp_wav):
-
-        play_start = time.time()   # 🎯 REAL AUDIO START
-
-        if platform.system() == "Windows":
+        subprocess.run([PIPER_BIN,"--model",PIPER_MODEL,"--output_file",tmp_wav],
+            input=text.encode("utf-8"), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if os.path.exists(tmp_wav):
             import winsound
             winsound.PlaySound(tmp_wav, winsound.SND_FILENAME)
-        else:
-            subprocess.run(["aplay", tmp_wav])
-
-        play_end = time.time()
-
-        if ui:
-            ui.update_audio_time(gen_end, play_start, play_end)
-
-        os.remove(tmp_wav)
+            os.remove(tmp_wav)
+    else:
+        subprocess.run([PIPER_BIN,"-m",PIPER_MODEL,"-c",PIPER_CONFIG,"-f",tmp_wav],
+            input=text.encode("utf-8"), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if os.path.exists(tmp_wav):
+            subprocess.run(["aplay",tmp_wav])
+            os.remove(tmp_wav)
 
 # ================= ONLINE PROCESS =================
 def online_process(ui, recognizer, listening_mode):
@@ -230,8 +187,6 @@ def online_process(ui, recognizer, listening_mode):
     try:
         with sr.Microphone() as source:
             audio = recognizer.listen(source, phrase_time_limit=3)
-        global t_start
-        t_start = time.time()
 
         try:
             cmd = recognizer.recognize_google(audio, language="en-IN").lower()
@@ -271,27 +226,11 @@ def online_process(ui, recognizer, listening_mode):
             ui.show_hindi(text)
             translated = GoogleTranslator(source="en", target="es").translate(text)
 
-       
-
         ui.last_hindi = text
+        ui.last_english = translated
 
-        # 🌐 Get network latency
-        latency = get_network_latency()
-
-        if latency:
-          ui.last_english = f"{translated}\n🌐 Net: {latency} ms"
-        else:
-          ui.last_english = f"{translated}\n🌐 Net: N/A"
-
-        ui.show_translation(ui.last_english)
-
-        # ⏱ Latency tracking (keep your existing logic if added)
-        global t_text
-        t_text = time.time()
-
-        ui.show_latency(t_start, t_text, None)
-
-        speak_text_en(translated, ui)
+        ui.show_translation(translated)
+        speak_text_en(translated)
 
     except:
         pass
@@ -361,8 +300,6 @@ def assistant_loop(ui):
                 spoken_text = json.loads(hi_rec.Result()).get("text","")
                 if not spoken_text:
                     continue
-                global t_start
-                t_start = time.time()
 
                 ui.show_hindi(spoken_text)
 
@@ -373,13 +310,7 @@ def assistant_loop(ui):
                 ui.last_english = english
 
                 ui.show_translation(english)
-                global t_text
-                t_text = time.time()
-                ui.show_latency(t_start, t_text, None)
-                
-               
-                speak_text_en(english, ui)
-                
+                speak_text_en(english)
 
             elif LANG_MODE == "EN_TO_HI" and en_rec.AcceptWaveform(data):
 
@@ -565,37 +496,6 @@ class ModernTranslatorUI:
 
     def set_listening_mode(self):
         self.light_canvas.itemconfig(self.light, fill="#00FF00")
-    def show_latency(self, start, text_time, audio_time):
-     if start and text_time:
-        text_latency = round(text_time - start, 2)
-     else:
-        text_latency = 0
-
-     if start and audio_time:
-        audio_latency = round(audio_time - start, 2)
-     else:
-        audio_latency = "..."
-
-     latency_info = f"\n⏱ Text: {text_latency}s | Audio: {audio_latency}s"
-
-     base_text = self.last_english if self.last_english else ""
-     self.english_label.config(text=base_text + latency_info)
-    def update_audio_time(self, gen_end, play_start, play_end):
-     global t_start, t_text
-
-     text_latency = round(t_text - t_start, 2)
-     audio_latency = round(play_start - t_start, 2)
-     tts_delay = round(play_start - t_text, 2)
-     playback_time = round(play_end - play_start, 2)
-
-     latency_info = (
-         f"\n⏱ Text: {text_latency}s"
-         f" | Audio: {audio_latency}s"
-         f"\n⚙️ TTS: {tts_delay}s | 🔊 Play: {playback_time}s"
-     )
-
-     base_text = self.last_english if self.last_english else ""
-     self.english_label.config(text=base_text + latency_info)
 
 # ================= START =================
 if __name__ == "__main__":
