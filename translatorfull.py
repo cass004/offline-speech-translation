@@ -525,8 +525,8 @@ class ModernTranslatorUI:
 
      latency_info = f"\n⏱ Text: {text_latency}s | Audio: {audio_latency}s"
 
-     current_text = self.english_label.cget("text")
-     self.english_label.config(text=current_text + latency_info)
+     base_text = self.last_english if self.last_english else ""
+     self.english_label.config(text=base_text + latency_info)
 
 # ================= START =================
 if __name__ == "__main__":
