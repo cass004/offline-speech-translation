@@ -217,7 +217,7 @@ def online_process(ui, recognizer, listening_mode):
 
     try:
         with sr.Microphone() as source:
-            global t_start
+            global t_start, t_text
             t_start = time.time()
             audio = recognizer.listen(source, phrase_time_limit=3)
 
@@ -259,9 +259,7 @@ def online_process(ui, recognizer, listening_mode):
             ui.show_hindi(text)
             translated = GoogleTranslator(source="en", target="es").translate(text)
 
-        global t_start, t_text
-
-        t_start = time.time()   # 🎯 START (speech captured)
+       
 
         ui.last_hindi = text
         ui.last_english = translated
