@@ -217,9 +217,9 @@ def online_process(ui, recognizer, listening_mode):
 
     try:
         with sr.Microphone() as source:
-            global t_start, t_text
-            t_start = time.time()
             audio = recognizer.listen(source, phrase_time_limit=3)
+        global t_start
+        t_start = time.time()
 
         try:
             cmd = recognizer.recognize_google(audio, language="en-IN").lower()
@@ -265,6 +265,7 @@ def online_process(ui, recognizer, listening_mode):
         ui.last_english = translated
 
         ui.show_translation(translated)
+        global t_text
 
         t_text = time.time()    # 📝 TEXT DISPLAYED
 
