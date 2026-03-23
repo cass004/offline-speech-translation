@@ -214,6 +214,8 @@ def online_process(ui, recognizer, listening_mode):
             text = recognizer.recognize_google(audio, language="hi-IN")
             ui.show_hindi(text)
             translated = GoogleTranslator(source="hi", target="en").translate(text)
+            cpu = process.cpu_percent(interval=None)
+            ram = process.memory_info().rss / (1024 * 1024)
 
         elif LANG_MODE == "EN_TO_HI":
             text = recognizer.recognize_google(audio, language="en-IN")
@@ -233,7 +235,7 @@ def online_process(ui, recognizer, listening_mode):
         ui.last_hindi = text
         ui.last_english = translated
 
-        ui.show_translation(translated)
+        ui.show_translation(translated, cpu, ram)
         speak_text_en(translated)
         
 
@@ -486,25 +488,23 @@ class ModernTranslatorUI:
         self.hindi_label.config(text="")
         self.english_label.config(text=text)
 
-    def show_translation(self, text):
-        global peak_ram
+    def show_translation(self, text, cpu=None, ram=None):
+     global peak_ram
 
-    # 🎯 CPU at correct moment (process only)
+    # If not passed (offline mode)
+     if cpu is None:
         cpu = process.cpu_percent(interval=None)
-
-    # 🎯 RAM (process only)
+     if ram is None:
         ram = process.memory_info().rss / (1024 * 1024)
 
-    # 🔥 track peak RAM for this run
-        if ram > peak_ram:
-            peak_ram = ram
+    # Peak tracking
+     if ram > peak_ram:
+        peak_ram = ram
 
-    # 🔥 show ONLY required values
-        usage = f"\n⚙️ CPU: {round(cpu,1)}% | 🧠 RAM (Peak): {round(peak_ram,1)} MB"
+     usage = f"\n⚙️ CPU: {round(cpu,1)}% | 🧠 RAM (Peak): {round(peak_ram,1)} MB"
 
-  
-        self.hindi_label.config(text=self.last_hindi)
-        self.english_label.config(text=text + usage)
+     self.hindi_label.config(text=self.last_hindi)
+     self.english_label.config(text=text + usage)
 
     def show_no_network(self):
         self.hindi_label.config(text="")
