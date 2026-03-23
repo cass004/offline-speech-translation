@@ -26,7 +26,7 @@ from difflib import get_close_matches
 
 # ================= MODE =================
 process = psutil.Process(os.getpid())
-
+process.cpu_percent(interval=None)
 peak_ram = 0
 MODE = "OFFLINE"
 
@@ -485,7 +485,7 @@ class ModernTranslatorUI:
         global peak_ram
 
     # 🎯 CPU at correct moment (process only)
-        cpu = process.cpu_percent(interval=0.1)
+        cpu = process.cpu_percent(interval=None)
 
     # 🎯 RAM (process only)
         ram = process.memory_info().rss / (1024 * 1024)
