@@ -15,7 +15,6 @@ import nltk
 import socket
 import speech_recognition as sr
 from deep_translator import GoogleTranslator
-import psutil, os
 
 from vosk import Model, KaldiRecognizer
 from argostranslate import translate as argostranslate
@@ -25,9 +24,6 @@ from wordfreq import zipf_frequency
 from difflib import get_close_matches
 
 # ================= MODE =================
-process = psutil.Process(os.getpid())
-process.cpu_percent(interval=None)
-peak_ram = 0
 MODE = "OFFLINE"
 
 # ================= LANGUAGE MODE =================
@@ -214,8 +210,6 @@ def online_process(ui, recognizer, listening_mode):
             text = recognizer.recognize_google(audio, language="hi-IN")
             ui.show_hindi(text)
             translated = GoogleTranslator(source="hi", target="en").translate(text)
-            cpu = process.cpu_percent(interval=None)
-            ram = process.memory_info().rss / (1024 * 1024)
 
         elif LANG_MODE == "EN_TO_HI":
             text = recognizer.recognize_google(audio, language="en-IN")
@@ -235,9 +229,8 @@ def online_process(ui, recognizer, listening_mode):
         ui.last_hindi = text
         ui.last_english = translated
 
-        ui.show_translation(translated, cpu, ram)
+        ui.show_translation(translated)
         speak_text_en(translated)
-        
 
     except:
         pass
@@ -318,7 +311,6 @@ def assistant_loop(ui):
 
                 ui.show_translation(english)
                 speak_text_en(english)
-               
 
             elif LANG_MODE == "EN_TO_HI" and en_rec.AcceptWaveform(data):
 
@@ -335,7 +327,6 @@ def assistant_loop(ui):
 
                 ui.show_translation(hindi_text)
                 speak_text_en(hindi_text)
-              
 
             elif LANG_MODE == "ES_TO_EN" and es_rec.AcceptWaveform(data):
 
@@ -352,7 +343,6 @@ def assistant_loop(ui):
 
                 ui.show_translation(english)
                 speak_text_en(english)
-             
 
             elif LANG_MODE == "EN_TO_ES" and en_rec.AcceptWaveform(data):
 
@@ -369,7 +359,6 @@ def assistant_loop(ui):
 
                 ui.show_translation(spanish)
                 speak_text_en(spanish)
-              
 
 # ================= GUI =================
 class ModernTranslatorUI:
@@ -488,23 +477,9 @@ class ModernTranslatorUI:
         self.hindi_label.config(text="")
         self.english_label.config(text=text)
 
-    def show_translation(self, text, cpu=None, ram=None):
-     global peak_ram
-
-    # If not passed (offline mode)
-     if cpu is None:
-        cpu = process.cpu_percent(interval=None)
-     if ram is None:
-        ram = process.memory_info().rss / (1024 * 1024)
-
-    # Peak tracking
-     if ram > peak_ram:
-        peak_ram = ram
-
-     usage = f"\n⚙️ CPU: {round(cpu,1)}% | 🧠 RAM (Peak): {round(peak_ram,1)} MB"
-
-     self.hindi_label.config(text=self.last_hindi)
-     self.english_label.config(text=text + usage)
+    def show_translation(self, text):
+        self.hindi_label.config(text=self.last_hindi)
+        self.english_label.config(text=text)
 
     def show_no_network(self):
         self.hindi_label.config(text="")
