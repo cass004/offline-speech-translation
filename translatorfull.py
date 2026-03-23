@@ -499,7 +499,7 @@ class ModernTranslatorUI:
 
   
         self.hindi_label.config(text=self.last_hindi)
-        self.english_label.config(text=text)
+        self.english_label.config(text=text + usage)
 
     def show_no_network(self):
         self.hindi_label.config(text="")
