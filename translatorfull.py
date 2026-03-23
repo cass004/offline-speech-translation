@@ -235,8 +235,7 @@ def online_process(ui, recognizer, listening_mode):
 
         ui.show_translation(translated)
         speak_text_en(translated)
-        global peak_ram
-        peak_ram = 0
+        
 
     except:
         pass
@@ -317,8 +316,7 @@ def assistant_loop(ui):
 
                 ui.show_translation(english)
                 speak_text_en(english)
-                global peak_ram
-                peak_ram = 0
+               
 
             elif LANG_MODE == "EN_TO_HI" and en_rec.AcceptWaveform(data):
 
@@ -335,8 +333,7 @@ def assistant_loop(ui):
 
                 ui.show_translation(hindi_text)
                 speak_text_en(hindi_text)
-                global peak_ram
-                peak_ram = 0
+              
 
             elif LANG_MODE == "ES_TO_EN" and es_rec.AcceptWaveform(data):
 
@@ -353,8 +350,7 @@ def assistant_loop(ui):
 
                 ui.show_translation(english)
                 speak_text_en(english)
-                global peak_ram
-                peak_ram = 0
+             
 
             elif LANG_MODE == "EN_TO_ES" and en_rec.AcceptWaveform(data):
 
@@ -371,8 +367,7 @@ def assistant_loop(ui):
 
                 ui.show_translation(spanish)
                 speak_text_en(spanish)
-                global peak_ram
-                peak_ram = 0
+              
 
 # ================= GUI =================
 class ModernTranslatorUI:
