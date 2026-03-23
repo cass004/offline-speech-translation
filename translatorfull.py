@@ -15,6 +15,7 @@ import nltk
 import socket
 import speech_recognition as sr
 from deep_translator import GoogleTranslator
+import psutil, os
 
 from vosk import Model, KaldiRecognizer
 from argostranslate import translate as argostranslate
@@ -24,6 +25,9 @@ from wordfreq import zipf_frequency
 from difflib import get_close_matches
 
 # ================= MODE =================
+process = psutil.Process(os.getpid())
+
+peak_ram = 0
 MODE = "OFFLINE"
 
 # ================= LANGUAGE MODE =================
@@ -478,6 +482,22 @@ class ModernTranslatorUI:
         self.english_label.config(text=text)
 
     def show_translation(self, text):
+        global peak_ram
+
+    # 🎯 CPU at correct moment (process only)
+        cpu = process.cpu_percent(interval=0.1)
+
+    # 🎯 RAM (process only)
+        ram = process.memory_info().rss / (1024 * 1024)
+
+    # 🔥 track peak RAM for this run
+        if ram > peak_ram:
+            peak_ram = ram
+
+    # 🔥 show ONLY required values
+        usage = f"\n⚙️ CPU: {round(cpu,1)}% | 🧠 RAM (Peak): {round(peak_ram,1)} MB"
+
+  
         self.hindi_label.config(text=self.last_hindi)
         self.english_label.config(text=text)
 
